@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MinLength,
 } from 'class-validator';
 import { AreaIntervencion, EstadoMaquina, EtapaImagen, TipoIntervencion } from '@prisma/client';
@@ -41,6 +42,21 @@ export class UpdateMaquinaDto {
   @IsOptional()
   @IsDateString()
   fechaLlegadaReal?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  precioVentaUsd?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,4})?$/)
+  tipoCambioUsado?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  precioVentaBob?: string;
 }
 
 export class UpdateMaquinaEstadoDto {

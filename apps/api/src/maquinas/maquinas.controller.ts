@@ -8,9 +8,10 @@ import {
   Post,
   Query,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { EstadoMaquina, Usuario } from '@prisma/client';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -61,7 +62,7 @@ export class MaquinasController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 8 * 1024 * 1024 },
+      limits: { fileSize: 25 * 1024 * 1024 },
     }),
   )
   uploadImagen(
@@ -71,6 +72,22 @@ export class MaquinasController {
   ) {
     if (!file) throw new BadRequestException('Archivo requerido');
     return this.maquinasService.uploadImagen(id, dto, file);
+  }
+
+  @Post(':id/imagenes/lote')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  uploadImagenes(
+    @Param('id') id: string,
+    @Body() dto: UploadImagenDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files?.length) throw new BadRequestException('Al menos una imagen es requerida');
+    return this.maquinasService.uploadImagenes(id, dto, files);
   }
 
   @Post(':id/intervenciones')

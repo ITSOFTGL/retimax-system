@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoMaquina, Usuario } from '@prisma/client';
+import { EstadoMaquina, EtapaImagen, Prisma, Usuario } from '@prisma/client';
 import { toMaquinaDto } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
@@ -15,6 +15,8 @@ import {
   UpdateMaquinaEstadoDto,
   UploadImagenDto,
 } from './dto/maquina.dto';
+
+const MAX_IMAGENES_POR_ETAPA = 10;
 
 const VALID_TRANSITIONS: Record<EstadoMaquina, EstadoMaquina[]> = {
   COMPRADA_ITALIA: [EstadoMaquina.EN_TRANSITO],
@@ -91,8 +93,11 @@ export class MaquinasService {
       data: {
         descripcionLlegada: dto.descripcionLlegada,
         fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : undefined,
+        precioVentaUsd: dto.precioVentaUsd ? new Prisma.Decimal(dto.precioVentaUsd) : undefined,
+        tipoCambioUsado: dto.tipoCambioUsado ? new Prisma.Decimal(dto.tipoCambioUsado) : undefined,
+        precioVentaBob: dto.precioVentaBob ? new Prisma.Decimal(dto.precioVentaBob) : undefined,
       },
-      include: { proveedor: true, creadoPor: true },
+      include: { proveedor: true, creadoPor: true, imagenes: true },
     });
     return toMaquinaDto(maquina);
   }
@@ -116,28 +121,48 @@ export class MaquinasService {
     return toMaquinaDto(updated);
   }
 
-  async uploadImagen(id: string, dto: UploadImagenDto, file: Express.Multer.File) {
+  async uploadImagenes(id: string, dto: UploadImagenDto, files: Express.Multer.File[]) {
     await this.ensureExists(id);
-    if (!file) throw new BadRequestException('Archivo requerido');
+    if (!files?.length) throw new BadRequestException('Al menos una imagen es requerida');
+    if (files.length > MAX_IMAGENES_POR_ETAPA) {
+      throw new BadRequestException(`Máximo ${MAX_IMAGENES_POR_ETAPA} imágenes por carga`);
+    }
 
-    const stored = await this.storage.saveImage(file.buffer, file.originalname);
-    const imagen = await this.prisma.imagenMaquina.create({
-      data: {
-        maquinaId: id,
-        etapa: dto.etapa,
-        url: stored.url,
-        thumbnailUrl: stored.thumbnailUrl,
-      },
+    const existentes = await this.prisma.imagenMaquina.count({
+      where: { maquinaId: id, etapa: dto.etapa },
     });
+    if (existentes + files.length > MAX_IMAGENES_POR_ETAPA) {
+      throw new BadRequestException(
+        `Máximo ${MAX_IMAGENES_POR_ETAPA} fotos por etapa (${dto.etapa}). Ya hay ${existentes}.`,
+      );
+    }
 
-    return {
-      id: imagen.id,
-      maquinaId: imagen.maquinaId,
-      etapa: imagen.etapa,
-      url: imagen.url,
-      thumbnailUrl: imagen.thumbnailUrl,
-      createdAt: imagen.createdAt.toISOString(),
-    };
+    const results = [];
+    for (const file of files) {
+      const stored = await this.storage.saveImage(file.buffer, file.originalname);
+      const imagen = await this.prisma.imagenMaquina.create({
+        data: {
+          maquinaId: id,
+          etapa: dto.etapa,
+          url: stored.url,
+          thumbnailUrl: stored.thumbnailUrl,
+        },
+      });
+      results.push({
+        id: imagen.id,
+        maquinaId: imagen.maquinaId,
+        etapa: imagen.etapa,
+        url: imagen.url,
+        thumbnailUrl: imagen.thumbnailUrl,
+        createdAt: imagen.createdAt.toISOString(),
+      });
+    }
+    return results;
+  }
+
+  async uploadImagen(id: string, dto: UploadImagenDto, file: Express.Multer.File) {
+    const [result] = await this.uploadImagenes(id, dto, [file]);
+    return result;
   }
 
   async createIntervencion(id: string, dto: CreateIntervencionDto, user: Usuario) {

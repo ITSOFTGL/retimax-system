@@ -39,6 +39,20 @@ export const AREA_LABELS: Record<AreaIntervencion, string> = {
   MANTENIMIENTO_GENERAL: 'Mantenimiento general',
 };
 
+export const ETAPA_LABELS: Record<string, string> = {
+  EMBARQUE: 'Embarque (Italia)',
+  LLEGADA: 'Llegada (contenedor)',
+  OTRA: 'Otras',
+};
+
+export function groupImagenesPorEtapa(imagenes: { etapa: string; id: string; thumbnailUrl: string; url: string }[]) {
+  return imagenes.reduce<Record<string, typeof imagenes>>((acc, img) => {
+    if (!acc[img.etapa]) acc[img.etapa] = [];
+    acc[img.etapa].push(img);
+    return acc;
+  }, {});
+}
+
 export const NEXT_ESTADOS: Partial<Record<EstadoMaquina, EstadoMaquina[]>> = {
   COMPRADA_ITALIA: [EstadoMaquina.EN_TRANSITO],
   EN_TRANSITO: [EstadoMaquina.RECIBIDA],

@@ -8,7 +8,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { StoredImage, StorageService } from './storage.interface';
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
+export const MAX_IMAGENES_POR_ETAPA = 10;
 
 @Injectable()
 export class LocalStorageService implements StorageService {
@@ -24,7 +25,7 @@ export class LocalStorageService implements StorageService {
 
   private async validateBuffer(buffer: Buffer) {
     if (buffer.length > MAX_BYTES) {
-      throw new Error('La imagen supera el máximo de 8 MB');
+      throw new Error('La imagen supera el máximo de 25 MB');
     }
 
     const detected = await fileTypeFromBuffer(buffer);

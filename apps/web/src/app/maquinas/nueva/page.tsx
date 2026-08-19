@@ -2,9 +2,10 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ProveedorDto } from '@retimax/shared-types';
+import { EtapaImagen, ProveedorDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
+import { PhotoUploader } from '@/components/PhotoUploader';
 import { apiFetch } from '@/lib/api';
 
 export default function NuevaMaquinaPage() {
@@ -15,6 +16,7 @@ export default function NuevaMaquinaPage() {
   const [proveedorId, setProveedorId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [nuevoProveedor, setNuevoProveedor] = useState('');
+  const [fotosEmbarque, setFotosEmbarque] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -47,6 +49,14 @@ export default function NuevaMaquinaPage() {
           descripcionLlegada: descripcion || undefined,
         }),
       });
+
+      if (fotosEmbarque.length > 0) {
+        const form = new FormData();
+        fotosEmbarque.forEach((f) => form.append('files', f));
+        form.append('etapa', EtapaImagen.EMBARQUE);
+        await apiFetch(`/maquinas/${maquina.id}/imagenes/lote`, { method: 'POST', body: form });
+      }
+
       router.push(`/maquinas/${maquina.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear');
@@ -59,7 +69,11 @@ export default function NuevaMaquinaPage() {
     <AuthGuard>
       <AppShell>
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">Registrar máquina</h2>
+          <h2 className="text-2xl font-bold mb-2">Registrar máquina (compra Italia)</h2>
+          <p className="text-[#6c757d] text-sm mb-6">
+            Álvaro registra aquí la máquina al comprarla: proveedor, descripción de lo acordado y
+            fotos de embarque como respaldo ante el proveedor.
+          </p>
           <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Nombre</label>
@@ -99,7 +113,7 @@ export default function NuevaMaquinaPage() {
                 <input
                   value={nuevoProveedor}
                   onChange={(e) => setNuevoProveedor(e.target.value)}
-                  placeholder="Nuevo proveedor"
+                  placeholder="Agregar proveedor rápido"
                   className="flex-1 rounded-lg border px-3 py-2 text-sm"
                 />
                 <button
@@ -112,14 +126,31 @@ export default function NuevaMaquinaPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Descripción de llegada</label>
+              <label className="block text-sm font-medium mb-1">
+                Qué debería traer (descripción acordada)
+              </label>
               <textarea
                 value={descripcion}
                 onChange={(e) => setDescripcion(e.target.value)}
                 rows={4}
                 className="w-full rounded-lg border px-4 py-2"
-                placeholder="Qué trajo, qué faltó..."
+                placeholder="Accesorios, herramientas, plato, garras..."
               />
+            </div>
+            <div className="border-t pt-4">
+              <PhotoUploader
+                label="Fotos de embarque / referencia (máx. 10)"
+                disabled={loading}
+                selectOnly
+                onUpload={async (files) => {
+                  setFotosEmbarque(files);
+                }}
+              />
+              {fotosEmbarque.length > 0 && (
+                <p className="text-sm text-green-700 mt-2">
+                  {fotosEmbarque.length} foto(s) listas para subir al registrar
+                </p>
+              )}
             </div>
             {error && <p className="text-red-600 text-sm">{error}</p>}
             <button
@@ -127,7 +158,7 @@ export default function NuevaMaquinaPage() {
               disabled={loading}
               className="rounded-lg bg-[#f5c842] px-6 py-2.5 font-semibold text-[#1a1a1a] disabled:opacity-60"
             >
-              {loading ? 'Guardando...' : 'Registrar'}
+              {loading ? 'Guardando...' : 'Registrar máquina'}
             </button>
           </form>
         </div>

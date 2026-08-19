@@ -5,17 +5,21 @@ import { useParams } from 'next/navigation';
 import {
   AreaIntervencion,
   EtapaImagen,
+  EstadoMaquina,
   MaquinaDto,
   TipoIntervencion,
 } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
+import { EstadoPipeline } from '@/components/EstadoPipeline';
+import { PhotoUploader } from '@/components/PhotoUploader';
 import { apiFetch, imageUrl } from '@/lib/api';
 import {
   AREA_LABELS,
   ESTADO_COLORS,
   ESTADO_LABELS,
-  NEXT_ESTADOS,
+  ETAPA_LABELS,
+  groupImagenesPorEtapa,
   TIPO_INTERVENCION_LABELS,
 } from '@/lib/labels';
 
@@ -24,19 +28,35 @@ export default function MaquinaDetailPage() {
   const [maquina, setMaquina] = useState<MaquinaDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const [tipo, setTipo] = useState<TipoIntervencion>(TipoIntervencion.DIAGNOSTICO_INICIAL);
   const [area, setArea] = useState<AreaIntervencion>(AreaIntervencion.MECANICA);
   const [descripcion, setDescripcion] = useState('');
   const [responsable, setResponsable] = useState('');
-  const [etapa, setEtapa] = useState<EtapaImagen>(EtapaImagen.EMBARQUE);
-  const [file, setFile] = useState<File | null>(null);
+
+  const [recepcionDesc, setRecepcionDesc] = useState('');
+  const [fechaLlegada, setFechaLlegada] = useState('');
+  const [precioUsd, setPrecioUsd] = useState('');
+  const [tipoCambio, setTipoCambio] = useState('');
+  const [precioBob, setPrecioBob] = useState('');
+
+  const [diagMecanica, setDiagMecanica] = useState('');
+  const [diagElectrica, setDiagElectrica] = useState('');
+  const [diagPintado, setDiagPintado] = useState('');
+  const [diagMantenimiento, setDiagMantenimiento] = useState('');
+  const [responsableRecepcion, setResponsableRecepcion] = useState('');
 
   async function load() {
     setLoading(true);
     try {
       const data = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`);
       setMaquina(data);
+      setRecepcionDesc(data.descripcionLlegada ?? '');
+      setFechaLlegada(data.fechaLlegadaReal?.slice(0, 10) ?? '');
+      setPrecioUsd(data.precioVentaUsd ?? '');
+      setTipoCambio(data.tipoCambioUsado ?? '');
+      setPrecioBob(data.precioVentaBob ?? '');
     } finally {
       setLoading(false);
     }
@@ -45,6 +65,23 @@ export default function MaquinaDetailPage() {
   useEffect(() => {
     load();
   }, [params.id]);
+
+  async function uploadPhotos(etapa: EtapaImagen, files: File[]) {
+    setUploading(true);
+    setError('');
+    try {
+      const form = new FormData();
+      files.forEach((f) => form.append('files', f));
+      form.append('etapa', etapa);
+      await apiFetch(`/maquinas/${params.id}/imagenes/lote`, { method: 'POST', body: form });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al subir fotos');
+      throw err;
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function changeEstado(nuevoEstado: string) {
     setError('');
@@ -56,6 +93,68 @@ export default function MaquinaDetailPage() {
       setMaquina(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cambiar estado');
+    }
+  }
+
+  async function saveRecepcion(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          descripcionLlegada: recepcionDesc,
+          fechaLlegadaReal: fechaLlegada || undefined,
+        }),
+      });
+      setMaquina(updated);
+
+      const responsable = responsableRecepcion.trim() || 'Recepción taller';
+      const diagnosticos: { area: AreaIntervencion; texto: string }[] = [
+        { area: AreaIntervencion.MECANICA, texto: diagMecanica.trim() },
+        { area: AreaIntervencion.ELECTRICA, texto: diagElectrica.trim() },
+        { area: AreaIntervencion.PINTADO, texto: diagPintado.trim() },
+        { area: AreaIntervencion.MANTENIMIENTO_GENERAL, texto: diagMantenimiento.trim() },
+      ];
+
+      for (const d of diagnosticos) {
+        if (!d.texto) continue;
+        await apiFetch(`/maquinas/${params.id}/intervenciones`, {
+          method: 'POST',
+          body: JSON.stringify({
+            tipo: TipoIntervencion.DIAGNOSTICO_INICIAL,
+            area: d.area,
+            descripcion: d.texto,
+            responsable,
+          }),
+        });
+      }
+
+      setDiagMecanica('');
+      setDiagElectrica('');
+      setDiagPintado('');
+      setDiagMantenimiento('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar recepción');
+    }
+  }
+
+  async function savePrecio(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          precioVentaUsd: precioUsd,
+          tipoCambioUsado: tipoCambio,
+          precioVentaBob: precioBob,
+        }),
+      });
+      setMaquina(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar precio');
     }
   }
 
@@ -75,22 +174,6 @@ export default function MaquinaDetailPage() {
     }
   }
 
-  async function uploadImage(e: FormEvent) {
-    e.preventDefault();
-    if (!file) return;
-    setError('');
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('etapa', etapa);
-      await apiFetch(`/maquinas/${params.id}/imagenes`, { method: 'POST', body: form });
-      setFile(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al subir imagen');
-    }
-  }
-
   if (loading) {
     return (
       <AuthGuard>
@@ -103,7 +186,16 @@ export default function MaquinaDetailPage() {
 
   if (!maquina) return null;
 
-  const nextEstados = NEXT_ESTADOS[maquina.estado] ?? [];
+  const imagenesPorEtapa = groupImagenesPorEtapa(maquina.imagenes ?? []);
+  const showRecepcion =
+    maquina.estado === EstadoMaquina.EN_TRANSITO ||
+    maquina.estado === EstadoMaquina.RECIBIDA ||
+    maquina.estado === EstadoMaquina.EN_DIAGNOSTICO ||
+    maquina.estado === EstadoMaquina.EN_MANTENIMIENTO;
+  const showPrecio =
+    maquina.estado === EstadoMaquina.LISTA_PARA_VENTA ||
+    maquina.estado === EstadoMaquina.RESERVADA ||
+    maquina.estado === EstadoMaquina.VENDIDA;
 
   return (
     <AuthGuard>
@@ -126,75 +218,196 @@ export default function MaquinaDetailPage() {
                 <span className="text-[#6c757d]">Proveedor:</span> {maquina.proveedor?.nombre}
               </p>
               <p>
-                <span className="text-[#6c757d]">Registrada por:</span>{' '}
-                {maquina.creadoPor?.nombre}
+                <span className="text-[#6c757d]">Registrada por:</span> {maquina.creadoPor?.nombre}
               </p>
-              {maquina.descripcionLlegada && (
-                <p className="md:col-span-2">
-                  <span className="text-[#6c757d]">Descripción llegada:</span>{' '}
-                  {maquina.descripcionLlegada}
+              {maquina.precioVentaUsd && (
+                <p>
+                  <span className="text-[#6c757d]">Precio venta:</span> ${maquina.precioVentaUsd} USD
+                  {maquina.precioVentaBob && ` / Bs ${maquina.precioVentaBob}`}
                 </p>
               )}
             </div>
-            {nextEstados.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {nextEstados.map((estado) => (
-                  <button
-                    key={estado}
-                    onClick={() => changeEstado(estado)}
-                    className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm hover:bg-black"
-                  >
-                    → {ESTADO_LABELS[estado]}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
+
+          <EstadoPipeline
+            estadoActual={maquina.estado}
+            onChangeEstado={(estado) => changeEstado(estado)}
+          />
 
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="rounded-xl bg-white border p-6">
-              <h3 className="font-semibold mb-4">Subir imagen</h3>
-              <form onSubmit={uploadImage} className="space-y-3">
-                <select
-                  value={etapa}
-                  onChange={(e) => setEtapa(e.target.value as EtapaImagen)}
-                  className="w-full rounded-lg border px-3 py-2"
-                >
-                  <option value="EMBARQUE">Embarque</option>
-                  <option value="LLEGADA">Llegada</option>
-                  <option value="OTRA">Otra</option>
-                </select>
+          {showRecepcion && (
+            <div className="rounded-xl bg-cyan-50 border-2 border-cyan-300 p-6 space-y-4">
+              <h3 className="font-semibold text-lg">📦 Módulo de recepción — cómo llegó y qué se le hará</h3>
+              <p className="text-sm text-[#6c757d]">
+                Al bajar del contenedor: qué trajo, qué faltó (plato, garras…), chapería, pintura y
+                diagnóstico inicial por área según informe de trabajadores.
+              </p>
+              <form onSubmit={saveRecepcion} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Descripción general de llegada
+                  </label>
+                  <textarea
+                    value={recepcionDesc}
+                    onChange={(e) => setRecepcionDesc(e.target.value)}
+                    rows={4}
+                    placeholder="Ej: Llegó con plato, sin garras. Falta bomba de agua..."
+                    className="w-full rounded-lg border px-3 py-2"
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Mecánica — qué se observa / hará</label>
+                    <textarea
+                      value={diagMecanica}
+                      onChange={(e) => setDiagMecanica(e.target.value)}
+                      rows={3}
+                      placeholder="Rodamientos, eje, lubricación..."
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Eléctrica — qué se observa / hará</label>
+                    <textarea
+                      value={diagElectrica}
+                      onChange={(e) => setDiagElectrica(e.target.value)}
+                      rows={3}
+                      placeholder="Motor, cableado, tablero..."
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Pintado — qué se requiere</label>
+                    <textarea
+                      value={diagPintado}
+                      onChange={(e) => setDiagPintado(e.target.value)}
+                      rows={3}
+                      placeholder="Pintura completa, retoques, chapería..."
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Mantenimiento / otras piezas
+                    </label>
+                    <textarea
+                      value={diagMantenimiento}
+                      onChange={(e) => setDiagMantenimiento(e.target.value)}
+                      rows={3}
+                      placeholder="Fabricar pieza, cambiar accesorio..."
+                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Responsable / trabajador</label>
+                    <input
+                      value={responsableRecepcion}
+                      onChange={(e) => setResponsableRecepcion(e.target.value)}
+                      placeholder="Nombre del mecánico, electricista..."
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Fecha llegada real</label>
+                    <input
+                      type="date"
+                      value={fechaLlegada}
+                      onChange={(e) => setFechaLlegada(e.target.value)}
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm font-semibold">
+                  Guardar recepción + diagnósticos
+                </button>
+              </form>
+              <PhotoUploader
+                label="Fotos de llegada al contenedor (máx. 10 — cámara o galería)"
+                uploading={uploading}
+                onUpload={(files) => uploadPhotos(EtapaImagen.LLEGADA, files)}
+              />
+            </div>
+          )}
+
+          {showPrecio && (
+            <div className="rounded-xl bg-green-50 border border-green-200 p-6">
+              <h3 className="font-semibold text-lg mb-3">Precio de venta</h3>
+              <form onSubmit={savePrecio} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  className="w-full text-sm"
+                  value={precioUsd}
+                  onChange={(e) => setPrecioUsd(e.target.value)}
+                  placeholder="Precio USD"
+                  className="rounded-lg border px-3 py-2"
+                />
+                <input
+                  value={tipoCambio}
+                  onChange={(e) => setTipoCambio(e.target.value)}
+                  placeholder="Tipo de cambio"
+                  className="rounded-lg border px-3 py-2"
+                />
+                <input
+                  value={precioBob}
+                  onChange={(e) => setPrecioBob(e.target.value)}
+                  placeholder="Precio BOB"
+                  className="rounded-lg border px-3 py-2"
                 />
                 <button
                   type="submit"
-                  disabled={!file}
-                  className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm disabled:opacity-50"
+                  className="sm:col-span-3 rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm w-fit"
                 >
-                  Subir
+                  Guardar precio
                 </button>
               </form>
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                {maquina.imagenes?.map((img) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={img.id}
-                    src={imageUrl(img.thumbnailUrl)}
-                    alt={img.etapa}
-                    className="rounded-lg object-cover h-24 w-full"
-                  />
-                ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-xl bg-white border p-6 space-y-6">
+              <div>
+                <h3 className="font-semibold mb-3">Fotos embarque (Italia)</h3>
+                <PhotoUploader
+                  uploading={uploading}
+                  onUpload={(files) => uploadPhotos(EtapaImagen.EMBARQUE, files)}
+                />
               </div>
+              <div>
+                <h3 className="font-semibold mb-3">Otras fotos</h3>
+                <PhotoUploader
+                  label="Fotos adicionales (máx. 10)"
+                  uploading={uploading}
+                  onUpload={(files) => uploadPhotos(EtapaImagen.OTRA, files)}
+                />
+              </div>
+              {Object.entries(imagenesPorEtapa).map(([etapa, imgs]) => (
+                <div key={etapa}>
+                  <h4 className="text-sm font-medium text-[#6c757d] mb-2">
+                    {ETAPA_LABELS[etapa] ?? etapa} ({imgs.length})
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {imgs.map((img) => (
+                      <a key={img.id} href={imageUrl(img.url)} target="_blank" rel="noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={imageUrl(img.thumbnailUrl)}
+                          alt={etapa}
+                          className="rounded-lg object-cover h-24 w-full hover:opacity-90"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="rounded-xl bg-white border p-6">
               <h3 className="font-semibold mb-4">Nueva intervención</h3>
+              <p className="text-xs text-[#6c757d] mb-3">
+                Diagnóstico inicial vs. trabajo realizado vs. corrección — cada registro es inmutable
+                (auditoría de garantías).
+              </p>
               <form onSubmit={submitIntervencion} className="space-y-3">
                 <select
                   value={tipo}
@@ -228,8 +441,8 @@ export default function MaquinaDetailPage() {
                 <textarea
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Descripción"
-                  rows={3}
+                  placeholder="Descripción libre — mecánica, eléctrica, pintado, mantenimiento..."
+                  rows={4}
                   className="w-full rounded-lg border px-3 py-2"
                   required
                 />
