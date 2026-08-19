@@ -25,11 +25,11 @@ export default function MaquinaDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [tipo, setTipo] = useState<TipoIntervencion>('DIAGNOSTICO_INICIAL');
-  const [area, setArea] = useState<AreaIntervencion>('MECANICA');
+  const [tipo, setTipo] = useState<TipoIntervencion>(TipoIntervencion.DIAGNOSTICO_INICIAL);
+  const [area, setArea] = useState<AreaIntervencion>(AreaIntervencion.MECANICA);
   const [descripcion, setDescripcion] = useState('');
   const [responsable, setResponsable] = useState('');
-  const [etapa, setEtapa] = useState<EtapaImagen>('EMBARQUE');
+  const [etapa, setEtapa] = useState<EtapaImagen>(EtapaImagen.EMBARQUE);
   const [file, setFile] = useState<File | null>(null);
 
   async function load() {

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Decimal, EstadoMaquina, EstadoPedido } from '@prisma/client';
+import { EstadoMaquina, EstadoPedido, Prisma } from '@prisma/client';
 import { decimalToString, toMaquinaDto } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
@@ -46,9 +46,9 @@ export class ComercialService {
         maquinaId: dto.maquinaId,
         descripcionReferencia: dto.descripcionReferencia,
         fotoReferenciaUrl,
-        anticipoUsd: new Decimal(dto.anticipoUsd),
-        saldoUsd: new Decimal(dto.saldoUsd),
-        totalUsd: new Decimal(dto.totalUsd),
+        anticipoUsd: new Prisma.Decimal(dto.anticipoUsd),
+        saldoUsd: new Prisma.Decimal(dto.saldoUsd),
+        totalUsd: new Prisma.Decimal(dto.totalUsd),
         fechaEntregaEstimada: dto.fechaEntregaEstimada
           ? new Date(dto.fechaEntregaEstimada)
           : undefined,
@@ -119,9 +119,9 @@ export class ComercialService {
         data: {
           maquinaId: dto.maquinaId,
           clienteId: dto.clienteId,
-          precioFinalUsd: new Decimal(dto.precioFinalUsd),
-          precioFinalBob: new Decimal(dto.precioFinalBob),
-          tipoCambio: new Decimal(dto.tipoCambio),
+          precioFinalUsd: new Prisma.Decimal(dto.precioFinalUsd),
+          precioFinalBob: new Prisma.Decimal(dto.precioFinalBob),
+          tipoCambio: new Prisma.Decimal(dto.tipoCambio),
           fechaEntrega: new Date(dto.fechaEntrega),
         },
         include: {
@@ -134,9 +134,9 @@ export class ComercialService {
         where: { id: dto.maquinaId },
         data: {
           estado: EstadoMaquina.VENDIDA,
-          precioVentaUsd: new Decimal(dto.precioFinalUsd),
-          precioVentaBob: new Decimal(dto.precioFinalBob),
-          tipoCambioUsado: new Decimal(dto.tipoCambio),
+          precioVentaUsd: new Prisma.Decimal(dto.precioFinalUsd),
+          precioVentaBob: new Prisma.Decimal(dto.precioFinalBob),
+          tipoCambioUsado: new Prisma.Decimal(dto.tipoCambio),
         },
       });
 
@@ -152,9 +152,9 @@ export class ComercialService {
     maquinaId: string | null;
     descripcionReferencia: string | null;
     fotoReferenciaUrl: string | null;
-    anticipoUsd: Decimal;
-    saldoUsd: Decimal;
-    totalUsd: Decimal;
+    anticipoUsd: Prisma.Decimal;
+    saldoUsd: Prisma.Decimal;
+    totalUsd: Prisma.Decimal;
     fechaEntregaEstimada: Date | null;
     estado: EstadoPedido;
     createdAt: Date;
@@ -167,9 +167,9 @@ export class ComercialService {
       proveedorId: string;
       estado: string;
       descripcionLlegada: string | null;
-      precioVentaUsd: Decimal | null;
-      tipoCambioUsado: Decimal | null;
-      precioVentaBob: Decimal | null;
+      precioVentaUsd: Prisma.Decimal | null;
+      tipoCambioUsado: Prisma.Decimal | null;
+      precioVentaBob: Prisma.Decimal | null;
       fechaCompra: Date | null;
       fechaLlegadaEstimada: Date | null;
       fechaLlegadaReal: Date | null;
@@ -206,9 +206,9 @@ export class ComercialService {
     id: string;
     maquinaId: string;
     clienteId: string;
-    precioFinalUsd: Decimal;
-    precioFinalBob: Decimal;
-    tipoCambio: Decimal;
+    precioFinalUsd: Prisma.Decimal;
+    precioFinalBob: Prisma.Decimal;
+    tipoCambio: Prisma.Decimal;
     fechaEntrega: Date;
     createdAt: Date;
     cliente: { id: string; nombre: string; telefono: string | null; notas: string | null; createdAt: Date };
@@ -219,9 +219,9 @@ export class ComercialService {
       proveedorId: string;
       estado: string;
       descripcionLlegada: string | null;
-      precioVentaUsd: Decimal | null;
-      tipoCambioUsado: Decimal | null;
-      precioVentaBob: Decimal | null;
+      precioVentaUsd: Prisma.Decimal | null;
+      tipoCambioUsado: Prisma.Decimal | null;
+      precioVentaBob: Prisma.Decimal | null;
       fechaCompra: Date | null;
       fechaLlegadaEstimada: Date | null;
       fechaLlegadaReal: Date | null;

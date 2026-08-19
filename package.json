@@ -4,12 +4,15 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:api": "pnpm --filter @retimax/api dev",
+    "dev:web": "pnpm --filter @retimax/web dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
-    "db:migrate": "pnpm --filter @retimax/api exec prisma migrate dev",
+    "db:migrate": "pnpm --filter @retimax/api exec prisma migrate deploy",
     "db:seed": "pnpm --filter @retimax/api exec prisma db seed",
-    "db:generate": "pnpm --filter @retimax/api exec prisma generate"
+    "db:generate": "pnpm --filter @retimax/api exec prisma generate",
+    "setup": "pnpm install && pnpm db:generate && pnpm db:migrate && pnpm db:seed"
   },
   "devDependencies": {
     "turbo": "^2.5.0",
@@ -18,5 +21,8 @@
   "packageManager": "pnpm@10.6.5",
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "prisma", "sharp"]
   }
 }

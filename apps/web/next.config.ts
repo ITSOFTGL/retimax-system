@@ -1,12 +1,10 @@
 import type { NextConfig } from 'next';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const rootDir = path.join(__dirname, '../..');
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
-  outputFileTracingRoot: rootDir,
+  ...(process.env.DOCKER_BUILD === '1' ? { output: 'standalone' as const, outputFileTracingRoot: rootDir } : {}),
   images: {
     remotePatterns: [
       { protocol: 'http', hostname: 'localhost', port: '4000', pathname: '/uploads/**' },
