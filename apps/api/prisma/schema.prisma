@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  ADMIN
+  OPERARIO
+}
+
+enum EstadoMaquina {
+  COMPRADA_ITALIA
+  EN_TRANSITO
+  RECIBIDA
+  EN_DIAGNOSTICO
+  EN_MANTENIMIENTO
+  LISTA_PARA_VENTA
+  RESERVADA
+  VENDIDA
+}
+
+enum EtapaImagen {
+  EMBARQUE
+  LLEGADA
+  OTRA
+}
+
+enum TipoIntervencion {
+  DIAGNOSTICO_INICIAL
+  TRABAJO_REALIZADO
+  OBSERVACION_ADICIONAL
+}
+
+enum AreaIntervencion {
+  MECANICA
+  ELECTRICA
+  PINTADO
+  MANTENIMIENTO_GENERAL
+}
+
+enum EstadoPedido {
+  PENDIENTE
+  EN_PROCESO
+  ENTREGADO
+  CANCELADO
+}
+
+model Usuario {
+  id           String   @id @default(uuid())
+  nombre       String
+  email        String   @unique
+  passwordHash String
+  rol          Rol      @default(ADMIN)
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  maquinasCreadas Maquina[]      @relation("MaquinaCreadaPor")
+  intervenciones  Intervencion[]
+  refreshTokens   RefreshToken[]
+
+  @@map("usuarios")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  usuarioId String
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@map("refresh_tokens")
+  @@index([usuarioId])
+}
+
+model Proveedor {
+  id        String    @id @default(uuid())
+  nombre    String
+  createdAt DateTime  @default(now())
+  maquinas  Maquina[]
+
+  @@map("proveedores")
+}
+
+model Cliente {
+  id        String   @id @default(uuid())
+  nombre    String
+  telefono  String?
+  notas     String?
+  createdAt DateTime @default(now())
+  pedidos   Pedido[]
+  ventas    Venta[]
+
+  @@map("clientes")
+}
+
+model Maquina {
+  id                   String        @id @default(uuid())
+  nombre               String
+  tipo                 String
+  proveedorId          String
+  proveedor            Proveedor     @relation(fields: [proveedorId], references: [id])
+  estado               EstadoMaquina @default(COMPRADA_ITALIA)
+  descripcionLlegada   String?
+  precioVentaUsd       Decimal?      @db.Decimal(10, 2)
+  tipoCambioUsado      Decimal?      @db.Decimal(10, 4)
+  precioVentaBob       Decimal?      @db.Decimal(10, 2)
+  fechaCompra          DateTime?
+  fechaLlegadaEstimada DateTime?
+  fechaLlegadaReal     DateTime?
+  creadoPorId          String
+  creadoPor            Usuario       @relation("MaquinaCreadaPor", fields: [creadoPorId], references: [id])
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  imagenes       ImagenMaquina[]
+  intervenciones Intervencion[]
+  pedidos        Pedido[]
+  venta          Venta?
+
+  @@map("maquinas")
+  @@index([estado])
+}
+
+model ImagenMaquina {
+  id           String      @id @default(uuid())
+  maquinaId    String
+  maquina      Maquina     @relation(fields: [maquinaId], references: [id], onDelete: Cascade)
+  etapa        EtapaImagen
+  url          String
+  thumbnailUrl String
+  createdAt    DateTime    @default(now())
+
+  @@map("imagenes_maquina")
+  @@index([maquinaId])
+}
+
+model Intervencion {
+  id              String           @id @default(uuid())
+  maquinaId       String
+  maquina         Maquina          @relation(fields: [maquinaId], references: [id], onDelete: Cascade)
+  tipo            TipoIntervencion
+  area            AreaIntervencion
+  descripcion     String
+  responsable     String
+  registradoPorId String
+  registradoPor   Usuario          @relation(fields: [registradoPorId], references: [id])
+  createdAt       DateTime         @default(now())
+
+  @@map("intervenciones")
+  @@index([maquinaId])
+}
+
+model Pedido {
+  id                    String       @id @default(uuid())
+  clienteId             String
+  cliente               Cliente      @relation(fields: [clienteId], references: [id])
+  maquinaId             String?
+  maquina               Maquina?     @relation(fields: [maquinaId], references: [id])
+  descripcionReferencia String?
+  fotoReferenciaUrl     String?
+  anticipoUsd           Decimal      @db.Decimal(10, 2)
+  saldoUsd              Decimal      @db.Decimal(10, 2)
+  totalUsd              Decimal      @db.Decimal(10, 2)
+  fechaEntregaEstimada  DateTime?
+  estado                EstadoPedido @default(PENDIENTE)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@map("pedidos")
+}
+
+model Venta {
+  id             String   @id @default(uuid())
+  maquinaId      String   @unique
+  maquina        Maquina  @relation(fields: [maquinaId], references: [id])
+  clienteId      String
+  cliente        Cliente  @relation(fields: [clienteId], references: [id])
+  precioFinalUsd Decimal  @db.Decimal(10, 2)
+  precioFinalBob Decimal  @db.Decimal(10, 2)
+  tipoCambio     Decimal  @db.Decimal(10, 4)
+  fechaEntrega   DateTime
+  createdAt      DateTime @default(now())
+
+  @@map("ventas")
+}

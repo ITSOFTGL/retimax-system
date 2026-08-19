@@ -1,0 +1,66 @@
+import {
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+} from 'class-validator';
+import { EstadoPedido } from '@prisma/client';
+
+export class CreatePedidoDto {
+  @IsUUID()
+  clienteId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  maquinaId?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcionReferencia?: string;
+
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  anticipoUsd!: string;
+
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  saldoUsd!: string;
+
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  totalUsd!: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaEntregaEstimada?: string;
+}
+
+export class UpdatePedidoEstadoDto {
+  @IsEnum(EstadoPedido)
+  estado!: EstadoPedido;
+}
+
+export class CreateVentaDto {
+  @IsUUID()
+  maquinaId!: string;
+
+  @IsUUID()
+  clienteId!: string;
+
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  precioFinalUsd!: string;
+
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  precioFinalBob!: string;
+
+  @IsString()
+  @Matches(/^\d+(\.\d{1,4})?$/)
+  tipoCambio!: string;
+
+  @IsDateString()
+  fechaEntrega!: string;
+}

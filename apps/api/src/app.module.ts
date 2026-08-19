@@ -1,0 +1,35 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { join } from 'path';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { CatalogoModule } from './catalogo/catalogo.module';
+import { ComercialModule } from './comercial/comercial.module';
+import { MaquinasModule } from './maquinas/maquinas.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { StorageModule } from './storage/storage.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ServeStaticModule.forRoot({
+      rootPath: join(process.env.UPLOAD_DIR || './uploads'),
+      serveRoot: '/uploads',
+    }),
+    PrismaModule,
+    StorageModule,
+    AuthModule,
+    MaquinasModule,
+    CatalogoModule,
+    ComercialModule,
+  ],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
+})
+export class AppModule {}

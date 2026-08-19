@@ -1,0 +1,252 @@
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Decimal, EstadoMaquina, EstadoPedido } from '@prisma/client';
+import { decimalToString, toMaquinaDto } from '../common/mappers';
+import { PrismaService } from '../prisma/prisma.service';
+import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
+import { CreatePedidoDto, CreateVentaDto, UpdatePedidoEstadoDto } from './dto/comercial.dto';
+
+@Injectable()
+export class ComercialService {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+  ) {}
+
+  async listPedidos() {
+    const pedidos = await this.prisma.pedido.findMany({
+      include: { cliente: true, maquina: { include: { proveedor: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return pedidos.map((p) => this.toPedidoDto(p));
+  }
+
+  async createPedido(dto: CreatePedidoDto, file?: Express.Multer.File) {
+    const cliente = await this.prisma.cliente.findUnique({ where: { id: dto.clienteId } });
+    if (!cliente) throw new BadRequestException('Cliente no encontrado');
+
+    if (dto.maquinaId) {
+      const maquina = await this.prisma.maquina.findUnique({ where: { id: dto.maquinaId } });
+      if (!maquina) throw new BadRequestException('Máquina no encontrada');
+    }
+
+    let fotoReferenciaUrl: string | undefined;
+    if (file) {
+      const stored = await this.storage.saveReferenceImage(file.buffer, file.originalname);
+      fotoReferenciaUrl = stored.url;
+    }
+
+    const pedido = await this.prisma.pedido.create({
+      data: {
+        clienteId: dto.clienteId,
+        maquinaId: dto.maquinaId,
+        descripcionReferencia: dto.descripcionReferencia,
+        fotoReferenciaUrl,
+        anticipoUsd: new Decimal(dto.anticipoUsd),
+        saldoUsd: new Decimal(dto.saldoUsd),
+        totalUsd: new Decimal(dto.totalUsd),
+        fechaEntregaEstimada: dto.fechaEntregaEstimada
+          ? new Date(dto.fechaEntregaEstimada)
+          : undefined,
+      },
+      include: { cliente: true, maquina: { include: { proveedor: true } } },
+    });
+
+    if (pedido.maquinaId) {
+      await this.prisma.maquina.update({
+        where: { id: pedido.maquinaId },
+        data: { estado: EstadoMaquina.RESERVADA },
+      });
+    }
+
+    return this.toPedidoDto(pedido);
+  }
+
+  async updatePedidoEstado(id: string, dto: UpdatePedidoEstadoDto) {
+    const pedido = await this.prisma.pedido.findUnique({ where: { id } });
+    if (!pedido) throw new NotFoundException('Pedido no encontrado');
+
+    const updated = await this.prisma.pedido.update({
+      where: { id },
+      data: { estado: dto.estado },
+      include: { cliente: true, maquina: { include: { proveedor: true } } },
+    });
+
+    if (dto.estado === EstadoPedido.CANCELADO && updated.maquinaId) {
+      await this.prisma.maquina.update({
+        where: { id: updated.maquinaId },
+        data: { estado: EstadoMaquina.LISTA_PARA_VENTA },
+      });
+    }
+
+    return this.toPedidoDto(updated);
+  }
+
+  async listVentas() {
+    const ventas = await this.prisma.venta.findMany({
+      include: {
+        cliente: true,
+        maquina: { include: { proveedor: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return ventas.map((v) => this.toVentaDto(v));
+  }
+
+  async createVenta(dto: CreateVentaDto) {
+    const maquina = await this.prisma.maquina.findUnique({
+      where: { id: dto.maquinaId },
+      include: { venta: true },
+    });
+    if (!maquina) throw new BadRequestException('Máquina no encontrada');
+    if (maquina.venta) throw new BadRequestException('La máquina ya fue vendida');
+    if (
+      maquina.estado !== EstadoMaquina.LISTA_PARA_VENTA &&
+      maquina.estado !== EstadoMaquina.RESERVADA
+    ) {
+      throw new BadRequestException('La máquina no está lista para venta');
+    }
+
+    const cliente = await this.prisma.cliente.findUnique({ where: { id: dto.clienteId } });
+    if (!cliente) throw new BadRequestException('Cliente no encontrado');
+
+    const venta = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.venta.create({
+        data: {
+          maquinaId: dto.maquinaId,
+          clienteId: dto.clienteId,
+          precioFinalUsd: new Decimal(dto.precioFinalUsd),
+          precioFinalBob: new Decimal(dto.precioFinalBob),
+          tipoCambio: new Decimal(dto.tipoCambio),
+          fechaEntrega: new Date(dto.fechaEntrega),
+        },
+        include: {
+          cliente: true,
+          maquina: { include: { proveedor: true } },
+        },
+      });
+
+      await tx.maquina.update({
+        where: { id: dto.maquinaId },
+        data: {
+          estado: EstadoMaquina.VENDIDA,
+          precioVentaUsd: new Decimal(dto.precioFinalUsd),
+          precioVentaBob: new Decimal(dto.precioFinalBob),
+          tipoCambioUsado: new Decimal(dto.tipoCambio),
+        },
+      });
+
+      return created;
+    });
+
+    return this.toVentaDto(venta);
+  }
+
+  private toPedidoDto(pedido: {
+    id: string;
+    clienteId: string;
+    maquinaId: string | null;
+    descripcionReferencia: string | null;
+    fotoReferenciaUrl: string | null;
+    anticipoUsd: Decimal;
+    saldoUsd: Decimal;
+    totalUsd: Decimal;
+    fechaEntregaEstimada: Date | null;
+    estado: EstadoPedido;
+    createdAt: Date;
+    updatedAt: Date;
+    cliente: { id: string; nombre: string; telefono: string | null; notas: string | null; createdAt: Date };
+    maquina?: {
+      id: string;
+      nombre: string;
+      tipo: string;
+      proveedorId: string;
+      estado: string;
+      descripcionLlegada: string | null;
+      precioVentaUsd: Decimal | null;
+      tipoCambioUsado: Decimal | null;
+      precioVentaBob: Decimal | null;
+      fechaCompra: Date | null;
+      fechaLlegadaEstimada: Date | null;
+      fechaLlegadaReal: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      proveedor: { id: string; nombre: string; createdAt: Date };
+    } | null;
+  }) {
+    return {
+      id: pedido.id,
+      clienteId: pedido.clienteId,
+      cliente: {
+        id: pedido.cliente.id,
+        nombre: pedido.cliente.nombre,
+        telefono: pedido.cliente.telefono,
+        notas: pedido.cliente.notas,
+        createdAt: pedido.cliente.createdAt.toISOString(),
+      },
+      maquinaId: pedido.maquinaId,
+      maquina: pedido.maquina ? toMaquinaDto(pedido.maquina) : null,
+      descripcionReferencia: pedido.descripcionReferencia,
+      fotoReferenciaUrl: pedido.fotoReferenciaUrl,
+      anticipoUsd: decimalToString(pedido.anticipoUsd)!,
+      saldoUsd: decimalToString(pedido.saldoUsd)!,
+      totalUsd: decimalToString(pedido.totalUsd)!,
+      fechaEntregaEstimada: pedido.fechaEntregaEstimada?.toISOString() ?? null,
+      estado: pedido.estado,
+      createdAt: pedido.createdAt.toISOString(),
+      updatedAt: pedido.updatedAt.toISOString(),
+    };
+  }
+
+  private toVentaDto(venta: {
+    id: string;
+    maquinaId: string;
+    clienteId: string;
+    precioFinalUsd: Decimal;
+    precioFinalBob: Decimal;
+    tipoCambio: Decimal;
+    fechaEntrega: Date;
+    createdAt: Date;
+    cliente: { id: string; nombre: string; telefono: string | null; notas: string | null; createdAt: Date };
+    maquina: {
+      id: string;
+      nombre: string;
+      tipo: string;
+      proveedorId: string;
+      estado: string;
+      descripcionLlegada: string | null;
+      precioVentaUsd: Decimal | null;
+      tipoCambioUsado: Decimal | null;
+      precioVentaBob: Decimal | null;
+      fechaCompra: Date | null;
+      fechaLlegadaEstimada: Date | null;
+      fechaLlegadaReal: Date | null;
+      createdAt: Date;
+      updatedAt: Date;
+      proveedor: { id: string; nombre: string; createdAt: Date };
+    };
+  }) {
+    return {
+      id: venta.id,
+      maquinaId: venta.maquinaId,
+      maquina: toMaquinaDto(venta.maquina),
+      clienteId: venta.clienteId,
+      cliente: {
+        id: venta.cliente.id,
+        nombre: venta.cliente.nombre,
+        telefono: venta.cliente.telefono,
+        notas: venta.cliente.notas,
+        createdAt: venta.cliente.createdAt.toISOString(),
+      },
+      precioFinalUsd: decimalToString(venta.precioFinalUsd)!,
+      precioFinalBob: decimalToString(venta.precioFinalBob)!,
+      tipoCambio: decimalToString(venta.tipoCambio)!,
+      fechaEntrega: venta.fechaEntrega.toISOString(),
+      createdAt: venta.createdAt.toISOString(),
+    };
+  }
+}

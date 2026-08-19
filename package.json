@@ -1,0 +1,22 @@
+{
+  "name": "retimax-system",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "db:migrate": "pnpm --filter @retimax/api exec prisma migrate dev",
+    "db:seed": "pnpm --filter @retimax/api exec prisma db seed",
+    "db:generate": "pnpm --filter @retimax/api exec prisma generate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "pnpm@10.6.5",
+  "engines": {
+    "node": ">=20"
+  }
+}
