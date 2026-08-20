@@ -6,6 +6,7 @@ import { join } from 'path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { StoredImage, StorageService } from './storage.interface';
+import { resolveUploadDir } from './upload-path';
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -16,7 +17,7 @@ export class LocalStorageService implements StorageService {
   private readonly uploadDir: string;
 
   constructor(private readonly config: ConfigService) {
-    this.uploadDir = this.config.get<string>('UPLOAD_DIR', './uploads');
+    this.uploadDir = resolveUploadDir(config);
   }
 
   private async ensureDir(dir: string) {

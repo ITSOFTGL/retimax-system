@@ -105,6 +105,9 @@ export async function logout() {
 }
 
 export function imageUrl(path: string) {
+  if (!path) return '';
   if (path.startsWith('http')) return path;
+  // En el navegador usamos proxy de Next (/uploads → API) para evitar CORS y auth
+  if (typeof window !== 'undefined') return path;
   return `${API_URL}${path}`;
 }

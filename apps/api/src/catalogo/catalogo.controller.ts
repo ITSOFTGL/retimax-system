@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { CreateClienteDto, CreateProveedorDto } from './dto/catalogo.dto';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { CreateClienteDto, CreateProveedorDto, UpdateClienteDto, UpdateProveedorDto } from './dto/catalogo.dto';
 import { CatalogoService } from './catalogo.service';
 
 @Controller()
@@ -16,6 +16,11 @@ export class CatalogoController {
     return this.catalogoService.createProveedor(dto);
   }
 
+  @Patch('proveedores/:id')
+  updateProveedor(@Param('id') id: string, @Body() dto: UpdateProveedorDto) {
+    return this.catalogoService.updateProveedor(id, dto);
+  }
+
   @Get('clientes')
   listClientes() {
     return this.catalogoService.listClientes();
@@ -24,5 +29,10 @@ export class CatalogoController {
   @Post('clientes')
   createCliente(@Body() dto: CreateClienteDto) {
     return this.catalogoService.createCliente(dto);
+  }
+
+  @Patch('clientes/:id')
+  updateCliente(@Param('id') id: string, @Body() dto: UpdateClienteDto) {
+    return this.catalogoService.updateCliente(id, dto);
   }
 }

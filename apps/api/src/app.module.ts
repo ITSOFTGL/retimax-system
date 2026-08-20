@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -10,7 +10,9 @@ import { CatalogoModule } from './catalogo/catalogo.module';
 import { ComercialModule } from './comercial/comercial.module';
 import { MaquinasModule } from './maquinas/maquinas.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ReportesModule } from './reportes/reportes.module';
 import { StorageModule } from './storage/storage.module';
+import { resolveUploadDir } from './storage/upload-path';
 
 @Module({
   imports: [
@@ -23,9 +25,15 @@ import { StorageModule } from './storage/storage.module';
       ],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
-    ServeStaticModule.forRoot({
-      rootPath: join(process.env.UPLOAD_DIR || './uploads'),
-      serveRoot: '/uploads',
+    ServeStaticModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          rootPath: resolveUploadDir(config),
+          serveRoot: '/uploads',
+        },
+      ],
     }),
     PrismaModule,
     StorageModule,
@@ -33,6 +41,7 @@ import { StorageModule } from './storage/storage.module';
     MaquinasModule,
     CatalogoModule,
     ComercialModule,
+    ReportesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

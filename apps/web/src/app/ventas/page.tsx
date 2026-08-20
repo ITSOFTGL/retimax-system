@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { ClienteDto, MaquinaDto, VentaDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
@@ -95,12 +96,17 @@ export default function VentasPage() {
     }
   }
 
+  const totalUsd = ventas.reduce((s, v) => s + parseFloat(v.precioFinalUsd), 0);
+
   return (
     <AuthGuard>
       <AppShell>
-        <div className="max-w-5xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Ventas</h2>
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold">Ventas</h2>
+              <p className="text-sm text-[#6c757d]">{ventas.length} máquina(s) vendida(s)</p>
+            </div>
             <button
               onClick={() => setShowForm(!showForm)}
               className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm"
@@ -109,21 +115,66 @@ export default function VentasPage() {
             </button>
           </div>
 
+          <div className="rounded-xl bg-green-50 border border-green-200 p-5">
+            <h3 className="font-semibold text-lg mb-3">Máquinas vendidas</h3>
+            {ventas.length === 0 ? (
+              <p className="text-sm text-[#6c757d]">Aún no hay ventas registradas.</p>
+            ) : (
+              <>
+                <p className="text-sm mb-4">
+                  Total facturado: <strong>${totalUsd.toFixed(2)} USD</strong>
+                </p>
+                <div className="space-y-2">
+                  {ventas.map((v) => (
+                    <div
+                      key={v.id}
+                      className="rounded-lg bg-white border p-4 flex flex-wrap justify-between gap-3"
+                    >
+                      <div>
+                        <Link
+                          href={`/maquinas/${v.maquinaId}`}
+                          className="font-semibold hover:text-[#f5c842]"
+                        >
+                          {v.maquina?.nombre ?? 'Máquina'}
+                        </Link>
+                        <p className="text-sm text-[#6c757d]">Cliente: {v.cliente?.nombre}</p>
+                        <p className="text-sm mt-1">
+                          ${v.precioFinalUsd} USD / Bs {v.precioFinalBob} (TC {v.tipoCambio})
+                        </p>
+                        <p className="text-xs text-[#6c757d]">
+                          Venta: {new Date(v.createdAt).toLocaleDateString('es-BO')} — Entrega:{' '}
+                          {new Date(v.fechaEntrega).toLocaleDateString('es-BO')}
+                        </p>
+                      </div>
+                      <span className="text-xs bg-neutral-500 text-white px-2 py-1 rounded-full h-fit">
+                        Vendida
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           {showForm && (
-            <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 mb-6 space-y-3">
+            <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 space-y-3">
+              <h3 className="font-semibold">Nueva venta</h3>
               <select
                 value={form.maquinaId}
                 onChange={(e) => updateForm({ maquinaId: e.target.value })}
                 className="w-full rounded-lg border px-3 py-2"
                 required
               >
-                <option value="">Máquina</option>
+                <option value="">Máquina disponible</option>
                 {maquinas.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.nombre} ({ESTADO_LABELS[m.estado]})
                   </option>
                 ))}
               </select>
+              {maquinas.length === 0 && (
+                <p className="text-amber-700 text-sm">No hay máquinas en lista para venta o reservadas.</p>
+              )}
               <select
                 value={form.clienteId}
                 onChange={(e) => updateForm({ clienteId: e.target.value })}
@@ -159,9 +210,8 @@ export default function VentasPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#6c757d] mb-1">Precio BOB (auto: USD × TC)</label>
+                  <label className="block text-xs text-[#6c757d] mb-1">Precio BOB (auto)</label>
                   <input
-                    placeholder="Calculado automáticamente"
                     value={form.precioFinalBob}
                     readOnly
                     className="w-full rounded-lg border px-3 py-2 bg-gray-50"
@@ -181,35 +231,19 @@ export default function VentasPage() {
               </div>
               {form.precioFinalUsd && form.tipoCambio && normalizeDecimal(form.precioFinalUsd) && (
                 <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                  {form.precioFinalUsd} USD × {form.tipoCambio} ={' '}
-                  <strong>Bs {form.precioFinalBob}</strong>
+                  {form.precioFinalUsd} USD × {form.tipoCambio} = <strong>Bs {form.precioFinalBob}</strong>
                 </p>
               )}
               {error && <p className="text-red-600 text-sm">{error}</p>}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || maquinas.length === 0}
                 className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
               >
                 {loading ? 'Guardando...' : 'Confirmar venta'}
               </button>
             </form>
           )}
-
-          <div className="space-y-3">
-            {ventas.map((v) => (
-              <div key={v.id} className="rounded-xl bg-white border p-4">
-                <p className="font-semibold">{v.maquina?.nombre}</p>
-                <p className="text-sm text-[#6c757d]">Cliente: {v.cliente?.nombre}</p>
-                <p className="text-sm mt-2">
-                  ${v.precioFinalUsd} USD / Bs {v.precioFinalBob} (TC {v.tipoCambio})
-                </p>
-                <p className="text-xs text-[#6c757d]">
-                  Entrega: {new Date(v.fechaEntrega).toLocaleDateString('es-BO')}
-                </p>
-              </div>
-            ))}
-          </div>
         </div>
       </AppShell>
     </AuthGuard>

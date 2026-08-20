@@ -10,6 +10,7 @@ const navItems = [
   { href: '/maquinas', label: 'Máquinas' },
   { href: '/pedidos', label: 'Pedidos' },
   { href: '/ventas', label: 'Ventas' },
+  { href: '/reportes', label: 'Reportería' },
   { href: '/clientes', label: 'Clientes' },
   { href: '/proveedores', label: 'Proveedores' },
 ];

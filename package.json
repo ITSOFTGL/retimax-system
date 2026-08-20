@@ -6,6 +6,7 @@
     "dev": "turbo run dev",
     "dev:api": "pnpm --filter @retimax/api dev",
     "dev:web": "pnpm --filter @retimax/web dev",
+    "dev:web:clean": "pnpm --filter @retimax/web exec node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && pnpm dev:web",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",

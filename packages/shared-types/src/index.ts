@@ -157,6 +157,64 @@ export interface DashboardResumen {
   porEstado: Record<EstadoMaquina, number>;
 }
 
+export interface ReporteResumenDto {
+  resumen: {
+    totalMaquinas: number;
+    totalVentas: number;
+    totalClientes: number;
+    totalProveedores: number;
+    totalVentasUsd: string;
+    totalVentasBob: string;
+    maquinasCompradas: number;
+    maquinasEnProceso: number;
+    maquinasDisponibles: number;
+    maquinasReservadas: number;
+    maquinasVendidas: number;
+  };
+  porEstado: Record<EstadoMaquina, number>;
+  ventas: Array<{
+    id: string;
+    maquinaId: string;
+    maquinaNombre: string;
+    maquinaTipo: string;
+    proveedor: string;
+    clienteNombre: string;
+    precioFinalUsd: string;
+    precioFinalBob: string;
+    tipoCambio: string;
+    fechaEntrega: string;
+    createdAt: string;
+  }>;
+  maquinas: Array<{
+    id: string;
+    nombre: string;
+    tipo: string;
+    estado: EstadoMaquina;
+    proveedor: string;
+    registradoPor: string;
+    reservadaPor: string | null;
+    vendidaA: string | null;
+    precioVentaUsd: string | null;
+    empleadoDiagnostico: string | null;
+    fechaDespacho: string | null;
+    fechaLlegadaReal: string | null;
+    thumbnailUrl: string | null;
+    updatedAt: string;
+  }>;
+  clientes: Array<{
+    id: string;
+    nombre: string;
+    telefono: string | null;
+    totalVentas: number;
+    totalPedidos: number;
+  }>;
+  proveedores: Array<{
+    id: string;
+    nombre: string;
+    totalMaquinas: number;
+  }>;
+}
+
 export interface CreateMaquinaRequest {
   nombre: string;
   tipo: string;

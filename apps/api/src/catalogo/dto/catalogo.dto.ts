@@ -19,3 +19,23 @@ export class CreateClienteDto {
   @IsString()
   notas?: string;
 }
+
+export class UpdateProveedorDto {
+  @IsString()
+  @MinLength(1)
+  nombre!: string;
+}
+
+export class UpdateClienteDto {
+  @IsString()
+  @MinLength(1)
+  nombre!: string;
+
+  @IsOptional()
+  @IsString()
+  telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  notas?: string;
+}
