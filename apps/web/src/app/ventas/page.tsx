@@ -6,12 +6,15 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiFetch } from '@/lib/api';
 import { ESTADO_LABELS } from '@/lib/labels';
+import { formatDecimal, multiplyDecimals, normalizeDecimal } from '@/lib/numbers';
 
 export default function VentasPage() {
   const [ventas, setVentas] = useState<VentaDto[]>([]);
   const [clientes, setClientes] = useState<ClienteDto[]>([]);
   const [maquinas, setMaquinas] = useState<MaquinaDto[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     maquinaId: '',
     clienteId: '',
@@ -20,6 +23,17 @@ export default function VentasPage() {
     tipoCambio: '',
     fechaEntrega: '',
   });
+
+  function updateForm(patch: Partial<typeof form>) {
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+      if ('precioFinalUsd' in patch || 'tipoCambio' in patch) {
+        const bob = multiplyDecimals(next.precioFinalUsd, next.tipoCambio);
+        if (bob) next.precioFinalBob = bob;
+      }
+      return next;
+    });
+  }
 
   async function load() {
     const [v, c, m] = await Promise.all([
@@ -38,12 +52,47 @@ export default function VentasPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    await apiFetch('/ventas', {
-      method: 'POST',
-      body: JSON.stringify(form),
-    });
-    setShowForm(false);
-    await load();
+    setError('');
+    setLoading(true);
+    try {
+      const precioFinalUsd = formatDecimal(form.precioFinalUsd);
+      const tipoCambio = formatDecimal(form.tipoCambio, 4);
+      const precioFinalBob =
+        formatDecimal(form.precioFinalBob) ?? multiplyDecimals(form.precioFinalUsd, form.tipoCambio);
+
+      if (!precioFinalUsd || !tipoCambio || !precioFinalBob) {
+        throw new Error('Precio USD, tipo de cambio y precio BOB deben ser números válidos');
+      }
+      if (!form.fechaEntrega) {
+        throw new Error('Selecciona la fecha de entrega');
+      }
+
+      await apiFetch('/ventas', {
+        method: 'POST',
+        body: JSON.stringify({
+          maquinaId: form.maquinaId,
+          clienteId: form.clienteId,
+          precioFinalUsd,
+          precioFinalBob,
+          tipoCambio,
+          fechaEntrega: form.fechaEntrega,
+        }),
+      });
+      setShowForm(false);
+      setForm({
+        maquinaId: '',
+        clienteId: '',
+        precioFinalUsd: '',
+        precioFinalBob: '',
+        tipoCambio: '',
+        fechaEntrega: '',
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al registrar venta');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -64,7 +113,7 @@ export default function VentasPage() {
             <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 mb-6 space-y-3">
               <select
                 value={form.maquinaId}
-                onChange={(e) => setForm({ ...form, maquinaId: e.target.value })}
+                onChange={(e) => updateForm({ maquinaId: e.target.value })}
                 className="w-full rounded-lg border px-3 py-2"
                 required
               >
@@ -77,7 +126,7 @@ export default function VentasPage() {
               </select>
               <select
                 value={form.clienteId}
-                onChange={(e) => setForm({ ...form, clienteId: e.target.value })}
+                onChange={(e) => updateForm({ clienteId: e.target.value })}
                 className="w-full rounded-lg border px-3 py-2"
                 required
               >
@@ -88,38 +137,61 @@ export default function VentasPage() {
                   </option>
                 ))}
               </select>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  placeholder="Precio USD"
-                  value={form.precioFinalUsd}
-                  onChange={(e) => setForm({ ...form, precioFinalUsd: e.target.value })}
-                  className="rounded-lg border px-3 py-2"
-                  required
-                />
-                <input
-                  placeholder="Precio BOB"
-                  value={form.precioFinalBob}
-                  onChange={(e) => setForm({ ...form, precioFinalBob: e.target.value })}
-                  className="rounded-lg border px-3 py-2"
-                  required
-                />
-                <input
-                  placeholder="Tipo de cambio"
-                  value={form.tipoCambio}
-                  onChange={(e) => setForm({ ...form, tipoCambio: e.target.value })}
-                  className="rounded-lg border px-3 py-2"
-                  required
-                />
-                <input
-                  type="date"
-                  value={form.fechaEntrega}
-                  onChange={(e) => setForm({ ...form, fechaEntrega: e.target.value })}
-                  className="rounded-lg border px-3 py-2"
-                  required
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-[#6c757d] mb-1">Precio USD</label>
+                  <input
+                    placeholder="Ej. 100"
+                    value={form.precioFinalUsd}
+                    onChange={(e) => updateForm({ precioFinalUsd: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#6c757d] mb-1">Tipo de cambio</label>
+                  <input
+                    placeholder="Ej. 11.96"
+                    value={form.tipoCambio}
+                    onChange={(e) => updateForm({ tipoCambio: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#6c757d] mb-1">Precio BOB (auto: USD × TC)</label>
+                  <input
+                    placeholder="Calculado automáticamente"
+                    value={form.precioFinalBob}
+                    readOnly
+                    className="w-full rounded-lg border px-3 py-2 bg-gray-50"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#6c757d] mb-1">Fecha de entrega</label>
+                  <input
+                    type="date"
+                    value={form.fechaEntrega}
+                    onChange={(e) => updateForm({ fechaEntrega: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2"
+                    required
+                  />
+                </div>
               </div>
-              <button type="submit" className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm">
-                Confirmar venta
+              {form.precioFinalUsd && form.tipoCambio && normalizeDecimal(form.precioFinalUsd) && (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  {form.precioFinalUsd} USD × {form.tipoCambio} ={' '}
+                  <strong>Bs {form.precioFinalBob}</strong>
+                </p>
+              )}
+              {error && <p className="text-red-600 text-sm">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {loading ? 'Guardando...' : 'Confirmar venta'}
               </button>
             </form>
           )}

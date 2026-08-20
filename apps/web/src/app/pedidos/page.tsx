@@ -6,11 +6,7 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiFetch } from '@/lib/api';
 
-function normalizeAmount(value: string) {
-  const cleaned = value.replace(',', '.').trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
-  return cleaned;
-}
+import { formatDecimal } from '@/lib/numbers';
 
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<PedidoDto[]>([]);
@@ -53,12 +49,12 @@ export default function PedidosPage() {
     setError('');
     setLoading(true);
     try {
-      const anticipoUsd = normalizeAmount(anticipo);
-      const totalUsd = normalizeAmount(total);
+      const anticipoUsd = formatDecimal(anticipo);
+      const totalUsd = formatDecimal(total);
       if (!anticipoUsd || !totalUsd) {
         throw new Error('Anticipo y total deben ser números válidos (ej. 1500 o 1500.50)');
       }
-      const saldoUsd = normalizeAmount(saldo) ?? '0';
+      const saldoUsd = formatDecimal(saldo) ?? '0';
       await apiFetch('/pedidos', {
         method: 'POST',
         body: JSON.stringify({

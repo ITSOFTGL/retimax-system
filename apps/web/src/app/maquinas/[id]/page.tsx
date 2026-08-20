@@ -13,47 +13,15 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AudioNoteRecorder } from '@/components/AudioNoteRecorder';
 import { EstadoPipeline } from '@/components/EstadoPipeline';
+import { PhotoGallery } from '@/components/PhotoGallery';
 import { ImagePicker } from '@/components/ImagePicker';
-import { apiFetch, imageUrl } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 import {
   AREA_LABELS,
   ESTADO_COLORS,
   ESTADO_LABELS,
-  ETAPA_LABELS,
-  groupImagenesPorEtapa,
   TIPO_INTERVENCION_LABELS,
 } from '@/lib/labels';
-
-function GaleriaFotos({ maquina }: { maquina: MaquinaDto }) {
-  const imagenesPorEtapa = groupImagenesPorEtapa(maquina.imagenes ?? []);
-  const entries = Object.entries(imagenesPorEtapa);
-  if (!entries.length) {
-    return <p className="text-[#6c757d] text-sm">Sin fotos registradas</p>;
-  }
-  return (
-    <div className="space-y-4">
-      {entries.map(([etapa, imgs]) => (
-        <div key={etapa}>
-          <h4 className="text-sm font-medium text-[#6c757d] mb-2">
-            {ETAPA_LABELS[etapa] ?? etapa} ({imgs.length})
-          </h4>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {imgs.map((img) => (
-              <a key={img.id} href={imageUrl(img.url)} target="_blank" rel="noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={imageUrl(img.thumbnailUrl)}
-                  alt={etapa}
-                  className="rounded-lg object-cover h-24 w-full hover:opacity-90"
-                />
-              </a>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function MaquinaDetailPage() {
   const params = useParams<{ id: string }>();
@@ -334,7 +302,10 @@ export default function MaquinaDetailPage() {
                 audioUrl={maquina.notaAudioUrl}
                 onUploaded={() => load()}
               />
-              <GaleriaFotos maquina={maquina} />
+              <PhotoGallery
+                imagenes={maquina.imagenes ?? []}
+                title="Galería de fotos"
+              />
               <ImagePicker
                 label="Agregar fotos de embarque"
                 disabled={uploading}
@@ -393,7 +364,10 @@ export default function MaquinaDetailPage() {
                   Despachada el {new Date(maquina.fechaDespacho).toLocaleDateString('es-BO')}
                 </p>
               )}
-              <GaleriaFotos maquina={maquina} />
+              <PhotoGallery
+                imagenes={maquina.imagenes ?? []}
+                title="Galería de fotos"
+              />
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <label className="block text-sm mb-1">Fecha de llegada al taller</label>
@@ -425,6 +399,12 @@ export default function MaquinaDetailPage() {
                   <p className="whitespace-pre-wrap">{acordada}</p>
                 </div>
               )}
+              <PhotoGallery
+                imagenes={maquina.imagenes ?? []}
+                etapa={EtapaImagen.EMBARQUE}
+                title="Fotos de embarque (Italia) — registradas por Álvaro"
+                emptyText="Sin fotos de embarque registradas"
+              />
               <form onSubmit={handleRecepcion} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">
@@ -484,7 +464,10 @@ export default function MaquinaDetailPage() {
                   <p>{maquina.descripcionLlegada}</p>
                 </div>
               )}
-              <GaleriaFotos maquina={maquina} />
+              <PhotoGallery
+                imagenes={maquina.imagenes ?? []}
+                title="Galería de fotos"
+              />
               <form onSubmit={handleCompletarDiagnostico} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
@@ -563,7 +546,10 @@ export default function MaquinaDetailPage() {
           {estado === EstadoMaquina.EN_MANTENIMIENTO && (
             <div className="rounded-xl bg-white border p-6 space-y-4">
               <h3 className="font-semibold text-lg">Mantenimiento en curso</h3>
-              <GaleriaFotos maquina={maquina} />
+              <PhotoGallery
+                imagenes={maquina.imagenes ?? []}
+                title="Galería de fotos"
+              />
               <ImagePicker
                 label="Fotos del trabajo"
                 disabled={uploading}
@@ -659,7 +645,10 @@ export default function MaquinaDetailPage() {
                 </form>
               </div>
               <div className="rounded-xl bg-white border p-6">
-                <GaleriaFotos maquina={maquina} />
+                <PhotoGallery
+                imagenes={maquina.imagenes ?? []}
+                title="Galería de fotos"
+              />
               </div>
             </>
           )}
