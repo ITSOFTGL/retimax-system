@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { EtapaImagen, ProveedorDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
-import { PhotoUploader } from '@/components/PhotoUploader';
+import { ImagePicker } from '@/components/ImagePicker';
 import { apiFetch } from '@/lib/api';
 
 export default function NuevaMaquinaPage() {
@@ -46,7 +46,7 @@ export default function NuevaMaquinaPage() {
           nombre,
           tipo,
           proveedorId,
-          descripcionLlegada: descripcion || undefined,
+          descripcionAcordada: descripcion || undefined,
         }),
       });
 
@@ -71,8 +71,8 @@ export default function NuevaMaquinaPage() {
         <div className="max-w-2xl mx-auto">
           <h2 className="text-2xl font-bold mb-2">Registrar máquina (compra Italia)</h2>
           <p className="text-[#6c757d] text-sm mb-6">
-            Álvaro registra aquí la máquina al comprarla: proveedor, descripción de lo acordado y
-            fotos de embarque como respaldo ante el proveedor.
+            Álvaro registra aquí la compra: proveedor, qué debería traer la máquina y fotos de
+            embarque como respaldo ante el proveedor.
           </p>
           <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 space-y-4">
             <div>
@@ -138,19 +138,12 @@ export default function NuevaMaquinaPage() {
               />
             </div>
             <div className="border-t pt-4">
-              <PhotoUploader
+              <ImagePicker
                 label="Fotos de embarque / referencia (máx. 10)"
                 disabled={loading}
-                selectOnly
-                onUpload={async (files) => {
-                  setFotosEmbarque(files);
-                }}
+                files={fotosEmbarque}
+                onChange={setFotosEmbarque}
               />
-              {fotosEmbarque.length > 0 && (
-                <p className="text-sm text-green-700 mt-2">
-                  {fotosEmbarque.length} foto(s) listas para subir al registrar
-                </p>
-              )}
             </div>
             {error && <p className="text-red-600 text-sm">{error}</p>}
             <button

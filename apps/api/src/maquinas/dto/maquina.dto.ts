@@ -26,6 +26,10 @@ export class CreateMaquinaDto {
   descripcionLlegada?: string;
 
   @IsOptional()
+  @IsString()
+  descripcionAcordada?: string;
+
+  @IsOptional()
   @IsDateString()
   fechaCompra?: string;
 
@@ -67,6 +71,54 @@ export class UpdateMaquinaEstadoDto {
 export class UploadImagenDto {
   @IsEnum(EtapaImagen)
   etapa!: EtapaImagen;
+}
+
+export class RegistrarTransitoDto {
+  @IsDateString()
+  fechaDespacho!: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaLlegadaEstimada?: string;
+}
+
+export class RegistrarRecepcionDto {
+  @IsString()
+  @MinLength(1)
+  descripcionLlegada!: string;
+
+  @IsString()
+  @MinLength(1)
+  empleadoDiagnostico!: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaLlegadaReal?: string;
+}
+
+export class CompletarDiagnosticoDto {
+  @IsString()
+  @MinLength(1)
+  responsable!: string;
+
+  @IsOptional()
+  @IsString()
+  mecanica?: string;
+
+  @IsOptional()
+  @IsString()
+  electrica?: string;
+
+  @IsOptional()
+  @IsString()
+  pintado?: string;
+
+  @IsOptional()
+  @IsString()
+  mantenimiento?: string;
+
+  @IsOptional()
+  requiereMantenimiento?: boolean;
 }
 
 export class CreateIntervencionDto {

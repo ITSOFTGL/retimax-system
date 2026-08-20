@@ -21,6 +21,9 @@ import {
   UpdateMaquinaDto,
   UpdateMaquinaEstadoDto,
   UploadImagenDto,
+  RegistrarTransitoDto,
+  RegistrarRecepcionDto,
+  CompletarDiagnosticoDto,
 } from './dto/maquina.dto';
 import { MaquinasService } from './maquinas.service';
 
@@ -88,6 +91,59 @@ export class MaquinasController {
   ) {
     if (!files?.length) throw new BadRequestException('Al menos una imagen es requerida');
     return this.maquinasService.uploadImagenes(id, dto, files);
+  }
+
+  @Post(':id/transito')
+  registrarTransito(@Param('id') id: string, @Body() dto: RegistrarTransitoDto) {
+    return this.maquinasService.registrarTransito(id, dto);
+  }
+
+  @Post(':id/recibida')
+  confirmarRecibida(
+    @Param('id') id: string,
+    @Body() body: { fechaLlegadaReal?: string },
+  ) {
+    return this.maquinasService.confirmarRecibida(id, body.fechaLlegadaReal);
+  }
+
+  @Post(':id/recepcion')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: memoryStorage(),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  registrarRecepcion(
+    @Param('id') id: string,
+    @Body() dto: RegistrarRecepcionDto,
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: Usuario,
+  ) {
+    return this.maquinasService.registrarRecepcion(id, dto, files ?? [], user);
+  }
+
+  @Post(':id/diagnostico/completar')
+  completarDiagnostico(
+    @Param('id') id: string,
+    @Body() dto: CompletarDiagnosticoDto,
+    @CurrentUser() user: Usuario,
+  ) {
+    return this.maquinasService.completarDiagnostico(id, dto, user);
+  }
+
+  @Post(':id/nota-audio')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  uploadNotaAudio(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Archivo de audio requerido');
+    return this.maquinasService.uploadNotaAudio(id, file);
   }
 
   @Post(':id/intervenciones')

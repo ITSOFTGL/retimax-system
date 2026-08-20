@@ -30,6 +30,10 @@ export function toMaquinaDto(maquina: {
   proveedorId: string;
   estado: string;
   descripcionLlegada: string | null;
+  descripcionAcordada?: string | null;
+  notaAudioUrl?: string | null;
+  fechaDespacho?: Date | null;
+  empleadoDiagnostico?: string | null;
   precioVentaUsd: Decimal | null;
   tipoCambioUsado: Decimal | null;
   precioVentaBob: Decimal | null;
@@ -73,6 +77,10 @@ export function toMaquinaDto(maquina: {
       : undefined,
     estado: maquina.estado,
     descripcionLlegada: maquina.descripcionLlegada,
+    descripcionAcordada: maquina.descripcionAcordada ?? null,
+    notaAudioUrl: maquina.notaAudioUrl ?? null,
+    fechaDespacho: maquina.fechaDespacho?.toISOString() ?? null,
+    empleadoDiagnostico: maquina.empleadoDiagnostico ?? null,
     precioVentaUsd: decimalToString(maquina.precioVentaUsd),
     tipoCambioUsado: decimalToString(maquina.tipoCambioUsado),
     precioVentaBob: decimalToString(maquina.precioVentaBob),

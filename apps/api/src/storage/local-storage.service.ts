@@ -72,6 +72,18 @@ export class LocalStorageService implements StorageService {
     return { url: stored.url, filename: stored.filename };
   }
 
+  async saveAudio(buffer: Buffer, _originalName: string): Promise<{ url: string; filename: string }> {
+    if (buffer.length > 15 * 1024 * 1024) {
+      throw new Error('El audio supera el máximo de 15 MB');
+    }
+    const id = uuidv4();
+    const filename = `${id}.webm`;
+    const audioDir = join(this.uploadDir, 'audio');
+    await this.ensureDir(audioDir);
+    await writeFile(join(audioDir, filename), buffer);
+    return { url: `/uploads/audio/${filename}`, filename };
+  }
+
   async deleteFile(relativePath: string): Promise<void> {
     const fullPath = join(this.uploadDir, relativePath.replace(/^\/uploads\//, ''));
     try {

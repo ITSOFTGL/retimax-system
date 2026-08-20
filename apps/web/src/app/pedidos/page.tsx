@@ -6,6 +6,12 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiFetch } from '@/lib/api';
 
+function normalizeAmount(value: string) {
+  const cleaned = value.replace(',', '.').trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+  return cleaned;
+}
+
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<PedidoDto[]>([]);
   const [clientes, setClientes] = useState<ClienteDto[]>([]);
@@ -15,8 +21,17 @@ export default function PedidosPage() {
   const [maquinaId, setMaquinaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [anticipo, setAnticipo] = useState('');
-  const [saldo, setSaldo] = useState('');
   const [total, setTotal] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const saldo = (() => {
+    const t = parseFloat(total.replace(',', '.'));
+    const a = parseFloat(anticipo.replace(',', '.'));
+    if (Number.isNaN(t) || Number.isNaN(a)) return '';
+    const s = Math.max(0, t - a);
+    return s.toFixed(2);
+  })();
 
   async function load() {
     const [p, c, m] = await Promise.all([
@@ -35,19 +50,38 @@ export default function PedidosPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    await apiFetch('/pedidos', {
-      method: 'POST',
-      body: JSON.stringify({
-        clienteId,
-        maquinaId: maquinaId || undefined,
-        descripcionReferencia: descripcion || undefined,
-        anticipoUsd: anticipo,
-        saldoUsd: saldo,
-        totalUsd: total,
-      }),
-    });
-    setShowForm(false);
-    await load();
+    setError('');
+    setLoading(true);
+    try {
+      const anticipoUsd = normalizeAmount(anticipo);
+      const totalUsd = normalizeAmount(total);
+      if (!anticipoUsd || !totalUsd) {
+        throw new Error('Anticipo y total deben ser números válidos (ej. 1500 o 1500.50)');
+      }
+      const saldoUsd = normalizeAmount(saldo) ?? '0';
+      await apiFetch('/pedidos', {
+        method: 'POST',
+        body: JSON.stringify({
+          clienteId,
+          maquinaId: maquinaId || undefined,
+          descripcionReferencia: descripcion || undefined,
+          anticipoUsd,
+          saldoUsd,
+          totalUsd,
+        }),
+      });
+      setShowForm(false);
+      setClienteId('');
+      setMaquinaId('');
+      setDescripcion('');
+      setAnticipo('');
+      setTotal('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar pedido');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -66,6 +100,11 @@ export default function PedidosPage() {
 
           {showForm && (
             <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 mb-6 space-y-3">
+              {clientes.length === 0 && (
+                <p className="text-amber-700 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  Primero registra un cliente en la sección Clientes.
+                </p>
+              )}
               <select
                 value={clienteId}
                 onChange={(e) => setClienteId(e.target.value)}
@@ -97,18 +136,11 @@ export default function PedidosPage() {
                 placeholder="Descripción de referencia"
                 className="w-full rounded-lg border px-3 py-2"
               />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input
                   value={anticipo}
                   onChange={(e) => setAnticipo(e.target.value)}
                   placeholder="Anticipo USD"
-                  className="rounded-lg border px-3 py-2"
-                  required
-                />
-                <input
-                  value={saldo}
-                  onChange={(e) => setSaldo(e.target.value)}
-                  placeholder="Saldo USD"
                   className="rounded-lg border px-3 py-2"
                   required
                 />
@@ -119,9 +151,20 @@ export default function PedidosPage() {
                   className="rounded-lg border px-3 py-2"
                   required
                 />
+                <input
+                  value={saldo}
+                  readOnly
+                  placeholder="Saldo (auto)"
+                  className="rounded-lg border px-3 py-2 bg-gray-50"
+                />
               </div>
-              <button type="submit" className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm">
-                Guardar pedido
+              {error && <p className="text-red-600 text-sm">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading || clientes.length === 0}
+                className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {loading ? 'Guardando...' : 'Guardar pedido'}
               </button>
             </form>
           )}

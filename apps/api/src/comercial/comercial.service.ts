@@ -25,7 +25,7 @@ export class ComercialService {
     return pedidos.map((p) => this.toPedidoDto(p));
   }
 
-  async createPedido(dto: CreatePedidoDto, file?: Express.Multer.File) {
+  async createPedido(dto: CreatePedidoDto) {
     const cliente = await this.prisma.cliente.findUnique({ where: { id: dto.clienteId } });
     if (!cliente) throw new BadRequestException('Cliente no encontrado');
 
@@ -34,18 +34,11 @@ export class ComercialService {
       if (!maquina) throw new BadRequestException('Máquina no encontrada');
     }
 
-    let fotoReferenciaUrl: string | undefined;
-    if (file) {
-      const stored = await this.storage.saveReferenceImage(file.buffer, file.originalname);
-      fotoReferenciaUrl = stored.url;
-    }
-
     const pedido = await this.prisma.pedido.create({
       data: {
         clienteId: dto.clienteId,
         maquinaId: dto.maquinaId,
         descripcionReferencia: dto.descripcionReferencia,
-        fotoReferenciaUrl,
         anticipoUsd: new Prisma.Decimal(dto.anticipoUsd),
         saldoUsd: new Prisma.Decimal(dto.saldoUsd),
         totalUsd: new Prisma.Decimal(dto.totalUsd),

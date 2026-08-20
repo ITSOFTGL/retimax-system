@@ -108,6 +108,10 @@ model Maquina {
   proveedor            Proveedor     @relation(fields: [proveedorId], references: [id])
   estado               EstadoMaquina @default(COMPRADA_ITALIA)
   descripcionLlegada   String?
+  descripcionAcordada String?
+  notaAudioUrl        String?
+  fechaDespacho       DateTime?
+  empleadoDiagnostico String?
   precioVentaUsd       Decimal?      @db.Decimal(10, 2)
   tipoCambioUsado      Decimal?      @db.Decimal(10, 4)
   precioVentaBob       Decimal?      @db.Decimal(10, 2)

@@ -105,6 +105,10 @@ export interface MaquinaDto {
   proveedor?: ProveedorDto;
   estado: EstadoMaquina;
   descripcionLlegada?: string | null;
+  descripcionAcordada?: string | null;
+  notaAudioUrl?: string | null;
+  fechaDespacho?: string | null;
+  empleadoDiagnostico?: string | null;
   precioVentaUsd?: string | null;
   tipoCambioUsado?: string | null;
   precioVentaBob?: string | null;
@@ -158,6 +162,7 @@ export interface CreateMaquinaRequest {
   tipo: string;
   proveedorId: string;
   descripcionLlegada?: string;
+  descripcionAcordada?: string;
   fechaCompra?: string;
   fechaLlegadaEstimada?: string;
 }

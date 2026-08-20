@@ -1,16 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { ComercialService } from './comercial.service';
 import { CreatePedidoDto, CreateVentaDto, UpdatePedidoEstadoDto } from './dto/comercial.dto';
 
@@ -24,17 +12,8 @@ export class ComercialController {
   }
 
   @Post('pedidos')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 8 * 1024 * 1024 },
-    }),
-  )
-  createPedido(
-    @Body() dto: CreatePedidoDto,
-    @UploadedFile() file?: Express.Multer.File,
-  ) {
-    return this.comercialService.createPedido(dto, file);
+  createPedido(@Body() dto: CreatePedidoDto) {
+    return this.comercialService.createPedido(dto);
   }
 
   @Patch('pedidos/:id/estado')

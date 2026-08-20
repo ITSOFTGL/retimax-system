@@ -4,13 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoMaquina, EtapaImagen, Prisma, Usuario } from '@prisma/client';
+import { AreaIntervencion, EstadoMaquina, EtapaImagen, Prisma, TipoIntervencion, Usuario } from '@prisma/client';
 import { toMaquinaDto } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
 import {
+  CompletarDiagnosticoDto,
   CreateIntervencionDto,
   CreateMaquinaDto,
+  RegistrarRecepcionDto,
+  RegistrarTransitoDto,
   UpdateMaquinaDto,
   UpdateMaquinaEstadoDto,
   UploadImagenDto,
@@ -22,7 +25,7 @@ const VALID_TRANSITIONS: Record<EstadoMaquina, EstadoMaquina[]> = {
   COMPRADA_ITALIA: [EstadoMaquina.EN_TRANSITO],
   EN_TRANSITO: [EstadoMaquina.RECIBIDA],
   RECIBIDA: [EstadoMaquina.EN_DIAGNOSTICO],
-  EN_DIAGNOSTICO: [EstadoMaquina.EN_MANTENIMIENTO],
+  EN_DIAGNOSTICO: [EstadoMaquina.EN_MANTENIMIENTO, EstadoMaquina.LISTA_PARA_VENTA],
   EN_MANTENIMIENTO: [EstadoMaquina.LISTA_PARA_VENTA],
   LISTA_PARA_VENTA: [EstadoMaquina.RESERVADA, EstadoMaquina.VENDIDA],
   RESERVADA: [EstadoMaquina.LISTA_PARA_VENTA, EstadoMaquina.VENDIDA],
@@ -75,6 +78,7 @@ export class MaquinasService {
         tipo: dto.tipo,
         proveedorId: dto.proveedorId,
         descripcionLlegada: dto.descripcionLlegada,
+        descripcionAcordada: dto.descripcionAcordada ?? dto.descripcionLlegada,
         fechaCompra: dto.fechaCompra ? new Date(dto.fechaCompra) : undefined,
         fechaLlegadaEstimada: dto.fechaLlegadaEstimada
           ? new Date(dto.fechaLlegadaEstimada)
@@ -100,6 +104,140 @@ export class MaquinasService {
       include: { proveedor: true, creadoPor: true, imagenes: true },
     });
     return toMaquinaDto(maquina);
+  }
+
+  async registrarTransito(id: string, dto: RegistrarTransitoDto) {
+    const maquina = await this.prisma.maquina.findUnique({ where: { id } });
+    if (!maquina) throw new NotFoundException('Máquina no encontrada');
+    if (maquina.estado !== EstadoMaquina.COMPRADA_ITALIA) {
+      throw new BadRequestException('Solo se puede despachar desde Comprada en Italia');
+    }
+
+    const updated = await this.prisma.maquina.update({
+      where: { id },
+      data: {
+        estado: EstadoMaquina.EN_TRANSITO,
+        fechaDespacho: new Date(dto.fechaDespacho),
+        fechaLlegadaEstimada: dto.fechaLlegadaEstimada
+          ? new Date(dto.fechaLlegadaEstimada)
+          : maquina.fechaLlegadaEstimada,
+      },
+      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
+    });
+    return toMaquinaDto(updated);
+  }
+
+  async confirmarRecibida(id: string, fechaLlegadaReal?: string) {
+    const maquina = await this.prisma.maquina.findUnique({ where: { id } });
+    if (!maquina) throw new NotFoundException('Máquina no encontrada');
+    if (maquina.estado !== EstadoMaquina.EN_TRANSITO) {
+      throw new BadRequestException('Solo se puede recibir desde En tránsito');
+    }
+
+    const updated = await this.prisma.maquina.update({
+      where: { id },
+      data: {
+        estado: EstadoMaquina.RECIBIDA,
+        fechaLlegadaReal: fechaLlegadaReal ? new Date(fechaLlegadaReal) : new Date(),
+      },
+      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
+    });
+    return toMaquinaDto(updated);
+  }
+
+  async registrarRecepcion(
+    id: string,
+    dto: RegistrarRecepcionDto,
+    files: Express.Multer.File[],
+    user: Usuario,
+  ) {
+    const maquina = await this.prisma.maquina.findUnique({ where: { id } });
+    if (!maquina) throw new NotFoundException('Máquina no encontrada');
+    if (maquina.estado !== EstadoMaquina.RECIBIDA) {
+      throw new BadRequestException('Complete la recepción solo cuando esté en estado Recibida');
+    }
+
+    if (files?.length) {
+      await this.uploadImagenes(id, { etapa: EtapaImagen.LLEGADA }, files);
+    }
+
+    const updated = await this.prisma.maquina.update({
+      where: { id },
+      data: {
+        descripcionLlegada: dto.descripcionLlegada,
+        empleadoDiagnostico: dto.empleadoDiagnostico,
+        fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : maquina.fechaLlegadaReal,
+        estado: EstadoMaquina.EN_DIAGNOSTICO,
+      },
+      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
+    });
+
+    await this.prisma.intervencion.create({
+      data: {
+        maquinaId: id,
+        tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
+        area: AreaIntervencion.MANTENIMIENTO_GENERAL,
+        descripcion: `Recepción verificada. Asignado a ${dto.empleadoDiagnostico} para diagnóstico.`,
+        responsable: user.nombre,
+        registradoPorId: user.id,
+      },
+    });
+
+    return toMaquinaDto(updated);
+  }
+
+  async completarDiagnostico(id: string, dto: CompletarDiagnosticoDto, user: Usuario) {
+    const maquina = await this.prisma.maquina.findUnique({ where: { id } });
+    if (!maquina) throw new NotFoundException('Máquina no encontrada');
+    if (maquina.estado !== EstadoMaquina.EN_DIAGNOSTICO) {
+      throw new BadRequestException('Solo se puede completar diagnóstico en ese estado');
+    }
+
+    const areas: { area: AreaIntervencion; texto?: string }[] = [
+      { area: AreaIntervencion.MECANICA, texto: dto.mecanica?.trim() },
+      { area: AreaIntervencion.ELECTRICA, texto: dto.electrica?.trim() },
+      { area: AreaIntervencion.PINTADO, texto: dto.pintado?.trim() },
+      { area: AreaIntervencion.MANTENIMIENTO_GENERAL, texto: dto.mantenimiento?.trim() },
+    ];
+
+    for (const a of areas) {
+      if (!a.texto) continue;
+      await this.prisma.intervencion.create({
+        data: {
+          maquinaId: id,
+          tipo: TipoIntervencion.DIAGNOSTICO_INICIAL,
+          area: a.area,
+          descripcion: a.texto,
+          responsable: dto.responsable,
+          registradoPorId: user.id,
+        },
+      });
+    }
+
+    const requiereMantenimiento =
+      dto.requiereMantenimiento ??
+      Boolean(dto.mecanica?.trim() || dto.electrica?.trim() || dto.pintado?.trim() || dto.mantenimiento?.trim());
+
+    const nuevoEstado = requiereMantenimiento
+      ? EstadoMaquina.EN_MANTENIMIENTO
+      : EstadoMaquina.LISTA_PARA_VENTA;
+
+    const updated = await this.prisma.maquina.update({
+      where: { id },
+      data: { estado: nuevoEstado },
+      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
+    });
+    return toMaquinaDto(updated);
+  }
+
+  async uploadNotaAudio(id: string, file: Express.Multer.File) {
+    await this.ensureExists(id);
+    const stored = await this.storage.saveAudio(file.buffer, file.originalname);
+    await this.prisma.maquina.update({
+      where: { id },
+      data: { notaAudioUrl: stored.url },
+    });
+    return { url: stored.url };
   }
 
   async updateEstado(id: string, dto: UpdateMaquinaEstadoDto) {
