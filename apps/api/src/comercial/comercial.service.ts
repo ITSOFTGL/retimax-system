@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EstadoMaquina, EstadoPedido, Prisma } from '@prisma/client';
-import { decimalToString, toMaquinaDto } from '../common/mappers';
+import {
+  decimalToString,
+  toMaquinaDto,
+  toReciboReservaDto,
+  toReciboVentaDto,
+} from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
 import { CreatePedidoDto, CreateVentaDto, UpdatePedidoEstadoDto } from './dto/comercial.dto';
@@ -19,7 +24,11 @@ export class ComercialService {
 
   async listPedidos() {
     const pedidos = await this.prisma.pedido.findMany({
-      include: { cliente: true, maquina: { include: { proveedor: true } } },
+      include: {
+        cliente: true,
+        maquina: { include: { proveedor: true } },
+        reciboReserva: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
     return pedidos.map((p) => this.toPedidoDto(p));
@@ -34,29 +43,79 @@ export class ComercialService {
       if (!maquina) throw new BadRequestException('Máquina no encontrada');
     }
 
-    const pedido = await this.prisma.pedido.create({
-      data: {
-        clienteId: dto.clienteId,
-        maquinaId: dto.maquinaId,
-        descripcionReferencia: dto.descripcionReferencia,
-        anticipoUsd: new Prisma.Decimal(dto.anticipoUsd),
-        saldoUsd: new Prisma.Decimal(dto.saldoUsd),
-        totalUsd: new Prisma.Decimal(dto.totalUsd),
-        fechaEntregaEstimada: dto.fechaEntregaEstimada
-          ? new Date(dto.fechaEntregaEstimada)
-          : undefined,
-      },
-      include: { cliente: true, maquina: { include: { proveedor: true } } },
+    const pedido = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.pedido.create({
+        data: {
+          clienteId: dto.clienteId,
+          maquinaId: dto.maquinaId,
+          descripcionReferencia: dto.descripcionReferencia,
+          anticipoUsd: new Prisma.Decimal(dto.anticipoUsd),
+          saldoUsd: new Prisma.Decimal(dto.saldoUsd),
+          totalUsd: new Prisma.Decimal(dto.totalUsd),
+          fechaEntregaEstimada: dto.fechaEntregaEstimada
+            ? new Date(dto.fechaEntregaEstimada)
+            : undefined,
+        },
+        include: { cliente: true, maquina: { include: { proveedor: true } } },
+      });
+
+      const numero = await this.nextReciboNumero(tx, 'RR');
+      await tx.reciboReserva.create({
+        data: { numero, pedidoId: created.id },
+      });
+
+      if (created.maquinaId) {
+        await tx.maquina.update({
+          where: { id: created.maquinaId },
+          data: { estado: EstadoMaquina.RESERVADA },
+        });
+      }
+
+      return tx.pedido.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          cliente: true,
+          maquina: { include: { proveedor: true } },
+          reciboReserva: true,
+        },
+      });
     });
 
-    if (pedido.maquinaId) {
-      await this.prisma.maquina.update({
-        where: { id: pedido.maquinaId },
-        data: { estado: EstadoMaquina.RESERVADA },
-      });
-    }
-
     return this.toPedidoDto(pedido);
+  }
+
+  async getReciboReserva(pedidoId: string) {
+    const recibo = await this.prisma.reciboReserva.findUnique({
+      where: { pedidoId },
+      include: {
+        pedido: {
+          include: {
+            cliente: true,
+            maquina: true,
+          },
+        },
+      },
+    });
+    if (!recibo) throw new NotFoundException('Recibo de reserva no encontrado');
+    return toReciboReservaDto({
+      ...recibo,
+      pedido: {
+        id: recibo.pedido.id,
+        anticipoUsd: recibo.pedido.anticipoUsd,
+        saldoUsd: recibo.pedido.saldoUsd,
+        totalUsd: recibo.pedido.totalUsd,
+        fechaEntregaEstimada: recibo.pedido.fechaEntregaEstimada,
+        descripcionReferencia: recibo.pedido.descripcionReferencia,
+        createdAt: recibo.pedido.createdAt,
+        cliente: {
+          nombre: recibo.pedido.cliente.nombre,
+          telefono: recibo.pedido.cliente.telefono,
+        },
+        maquina: recibo.pedido.maquina
+          ? { nombre: recibo.pedido.maquina.nombre, tipo: recibo.pedido.maquina.tipo }
+          : null,
+      },
+    });
   }
 
   async updatePedidoEstado(id: string, dto: UpdatePedidoEstadoDto) {
@@ -66,7 +125,11 @@ export class ComercialService {
     const updated = await this.prisma.pedido.update({
       where: { id },
       data: { estado: dto.estado },
-      include: { cliente: true, maquina: { include: { proveedor: true } } },
+      include: {
+        cliente: true,
+        maquina: { include: { proveedor: true } },
+        reciboReserva: true,
+      },
     });
 
     if (dto.estado === EstadoPedido.CANCELADO && updated.maquinaId) {
@@ -84,6 +147,7 @@ export class ComercialService {
       include: {
         cliente: true,
         maquina: { include: { proveedor: true } },
+        reciboVenta: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -123,6 +187,11 @@ export class ComercialService {
         },
       });
 
+      const numero = await this.nextReciboNumero(tx, 'RV');
+      await tx.reciboVenta.create({
+        data: { numero, ventaId: created.id },
+      });
+
       await tx.maquina.update({
         where: { id: dto.maquinaId },
         data: {
@@ -133,10 +202,72 @@ export class ComercialService {
         },
       });
 
-      return created;
+      return tx.venta.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          cliente: true,
+          maquina: { include: { proveedor: true } },
+          reciboVenta: true,
+        },
+      });
     });
 
     return this.toVentaDto(venta);
+  }
+
+  async getReciboVenta(ventaId: string) {
+    const recibo = await this.prisma.reciboVenta.findUnique({
+      where: { ventaId },
+      include: {
+        venta: {
+          include: {
+            cliente: true,
+            maquina: { include: { proveedor: true } },
+          },
+        },
+      },
+    });
+    if (!recibo) throw new NotFoundException('Recibo de venta no encontrado');
+    return toReciboVentaDto({
+      ...recibo,
+      venta: {
+        id: recibo.venta.id,
+        precioFinalUsd: recibo.venta.precioFinalUsd,
+        precioFinalBob: recibo.venta.precioFinalBob,
+        tipoCambio: recibo.venta.tipoCambio,
+        fechaEntrega: recibo.venta.fechaEntrega,
+        createdAt: recibo.venta.createdAt,
+        cliente: {
+          nombre: recibo.venta.cliente.nombre,
+          telefono: recibo.venta.cliente.telefono,
+        },
+        maquina: {
+          nombre: recibo.venta.maquina.nombre,
+          tipo: recibo.venta.maquina.tipo,
+          proveedor: recibo.venta.maquina.proveedor,
+        },
+      },
+    });
+  }
+
+  private async nextReciboNumero(
+    tx: Prisma.TransactionClient,
+    prefix: 'RV' | 'RR',
+  ): Promise<string> {
+    const year = new Date().getFullYear();
+    const pattern = `${prefix}-${year}-`;
+    const last =
+      prefix === 'RV'
+        ? await tx.reciboVenta.findFirst({
+            where: { numero: { startsWith: pattern } },
+            orderBy: { numero: 'desc' },
+          })
+        : await tx.reciboReserva.findFirst({
+            where: { numero: { startsWith: pattern } },
+            orderBy: { numero: 'desc' },
+          });
+    const seq = last ? parseInt(last.numero.split('-')[2] ?? '0', 10) + 1 : 1;
+    return `${pattern}${String(seq).padStart(4, '0')}`;
   }
 
   private toPedidoDto(pedido: {
@@ -170,6 +301,7 @@ export class ComercialService {
       updatedAt: Date;
       proveedor: { id: string; nombre: string; createdAt: Date };
     } | null;
+    reciboReserva?: { id: string; numero: string; fechaEmision: Date; vigenciaDias: number } | null;
   }) {
     return {
       id: pedido.id,
@@ -190,6 +322,14 @@ export class ComercialService {
       totalUsd: decimalToString(pedido.totalUsd)!,
       fechaEntregaEstimada: pedido.fechaEntregaEstimada?.toISOString() ?? null,
       estado: pedido.estado,
+      reciboReserva: pedido.reciboReserva
+        ? {
+            id: pedido.reciboReserva.id,
+            numero: pedido.reciboReserva.numero,
+            fechaEmision: pedido.reciboReserva.fechaEmision.toISOString(),
+            vigenciaDias: pedido.reciboReserva.vigenciaDias,
+          }
+        : null,
       createdAt: pedido.createdAt.toISOString(),
       updatedAt: pedido.updatedAt.toISOString(),
     };
@@ -222,6 +362,7 @@ export class ComercialService {
       updatedAt: Date;
       proveedor: { id: string; nombre: string; createdAt: Date };
     };
+    reciboVenta?: { id: string; numero: string; fechaEmision: Date } | null;
   }) {
     return {
       id: venta.id,
@@ -239,6 +380,13 @@ export class ComercialService {
       precioFinalBob: decimalToString(venta.precioFinalBob)!,
       tipoCambio: decimalToString(venta.tipoCambio)!,
       fechaEntrega: venta.fechaEntrega.toISOString(),
+      reciboVenta: venta.reciboVenta
+        ? {
+            id: venta.reciboVenta.id,
+            numero: venta.reciboVenta.numero,
+            fechaEmision: venta.reciboVenta.fechaEmision.toISOString(),
+          }
+        : null,
       createdAt: venta.createdAt.toISOString(),
     };
   }

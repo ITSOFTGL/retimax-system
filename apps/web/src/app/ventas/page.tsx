@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-import { ClienteDto, MaquinaDto, VentaDto } from '@retimax/shared-types';
+import { ClienteDto, MaquinaDto, ReciboVentaDto, VentaDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
+import { ReciboPrint } from '@/components/ReciboPrint';
 import { apiFetch } from '@/lib/api';
 import { ESTADO_LABELS } from '@/lib/labels';
 import { formatDecimal, multiplyDecimals, normalizeDecimal } from '@/lib/numbers';
@@ -16,6 +17,7 @@ export default function VentasPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [recibo, setRecibo] = useState<ReciboVentaDto | null>(null);
   const [form, setForm] = useState({
     maquinaId: '',
     clienteId: '',
@@ -68,7 +70,7 @@ export default function VentasPage() {
         throw new Error('Selecciona la fecha de entrega');
       }
 
-      await apiFetch('/ventas', {
+      const venta = await apiFetch<VentaDto>('/ventas', {
         method: 'POST',
         body: JSON.stringify({
           maquinaId: form.maquinaId,
@@ -79,6 +81,10 @@ export default function VentasPage() {
           fechaEntrega: form.fechaEntrega,
         }),
       });
+      if (venta.id) {
+        const r = await apiFetch<ReciboVentaDto>(`/ventas/${venta.id}/recibo`);
+        setRecibo(r);
+      }
       setShowForm(false);
       setForm({
         maquinaId: '',
@@ -99,7 +105,7 @@ export default function VentasPage() {
   const totalUsd = ventas.reduce((s, v) => s + parseFloat(v.precioFinalUsd), 0);
 
   return (
-    <AuthGuard>
+    <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="flex justify-between items-center">
@@ -145,6 +151,18 @@ export default function VentasPage() {
                           Venta: {new Date(v.createdAt).toLocaleDateString('es-BO')} — Entrega:{' '}
                           {new Date(v.fechaEntrega).toLocaleDateString('es-BO')}
                         </p>
+                        {v.reciboVenta && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const r = await apiFetch<ReciboVentaDto>(`/ventas/${v.id}/recibo`);
+                              setRecibo(r);
+                            }}
+                            className="text-xs underline mt-1"
+                          >
+                            Imprimir recibo {v.reciboVenta.numero}
+                          </button>
+                        )}
                       </div>
                       <span className="text-xs bg-neutral-500 text-white px-2 py-1 rounded-full h-fit">
                         Vendida
@@ -245,6 +263,52 @@ export default function VentasPage() {
             </form>
           )}
         </div>
+
+        {recibo && (
+          <ReciboPrint
+            title="Recibo de venta"
+            numero={recibo.numero}
+            fechaEmision={recibo.fechaEmision}
+            onClose={() => setRecibo(null)}
+          >
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="text-[#6c757d]">Cliente:</span> {recibo.venta?.cliente.nombre}
+              </p>
+              {recibo.venta?.cliente.telefono && (
+                <p>
+                  <span className="text-[#6c757d]">Tel:</span> {recibo.venta.cliente.telefono}
+                </p>
+              )}
+              <p>
+                <span className="text-[#6c757d]">Máquina:</span> {recibo.venta?.maquina.nombre} (
+                {recibo.venta?.maquina.tipo})
+              </p>
+              {recibo.venta?.maquina.proveedor && (
+                <p>
+                  <span className="text-[#6c757d]">Proveedor:</span> {recibo.venta.maquina.proveedor}
+                </p>
+              )}
+              <hr className="my-3" />
+              <p>
+                <span className="text-[#6c757d]">Precio USD:</span>{' '}
+                <strong>${recibo.venta?.precioFinalUsd}</strong>
+              </p>
+              <p>
+                <span className="text-[#6c757d]">Tipo cambio:</span> {recibo.venta?.tipoCambio}
+              </p>
+              <p>
+                <span className="text-[#6c757d]">Precio BOB:</span>{' '}
+                <strong>Bs {recibo.venta?.precioFinalBob}</strong>
+              </p>
+              <p>
+                <span className="text-[#6c757d]">Fecha entrega:</span>{' '}
+                {recibo.venta?.fechaEntrega &&
+                  new Date(recibo.venta.fechaEntrega).toLocaleDateString('es-BO')}
+              </p>
+            </div>
+          </ReciboPrint>
+        )}
       </AppShell>
     </AuthGuard>
   );

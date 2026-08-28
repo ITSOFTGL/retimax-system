@@ -6,8 +6,11 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { RolesGuard } from './auth/roles.guard';
 import { CatalogoModule } from './catalogo/catalogo.module';
 import { ComercialModule } from './comercial/comercial.module';
+import { EmpleadosModule } from './empleados/empleados.module';
+import { IntervencionesModule } from './intervenciones/intervenciones.module';
 import { MaquinasModule } from './maquinas/maquinas.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportesModule } from './reportes/reportes.module';
@@ -42,10 +45,13 @@ import { resolveUploadDir } from './storage/upload-path';
     CatalogoModule,
     ComercialModule,
     ReportesModule,
+    EmpleadosModule,
+    IntervencionesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}

@@ -37,7 +37,36 @@ async function main() {
     },
   });
 
-  console.log('Seed completado:', { admin: admin.email, proveedor: proveedor.nombre, cliente: cliente.nombre });
+  const empPassword = await bcrypt.hash('Empleado123!', 12);
+  const empleado = await prisma.empleado.upsert({
+    where: { email: 'alex@retimax.local' },
+    update: {},
+    create: {
+      nombre: 'Alex',
+      apellido: 'Demo',
+      email: 'alex@retimax.local',
+      especialidad: 'ELECTRICO',
+    },
+  });
+
+  await prisma.usuario.upsert({
+    where: { email: 'alex@retimax.local' },
+    update: { empleadoId: empleado.id, rol: 'EMPLEADO' },
+    create: {
+      nombre: 'Alex Demo',
+      email: 'alex@retimax.local',
+      passwordHash: empPassword,
+      rol: 'EMPLEADO',
+      empleadoId: empleado.id,
+    },
+  });
+
+  console.log('Seed completado:', {
+    admin: admin.email,
+    empleado: empleado.email,
+    proveedor: proveedor.nombre,
+    cliente: cliente.nombre,
+  });
 }
 
 main()

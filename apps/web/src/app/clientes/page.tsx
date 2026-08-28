@@ -70,7 +70,7 @@ export default function ClientesPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-3xl mx-auto">
           <h2 className="text-2xl font-bold mb-6">Clientes</h2>

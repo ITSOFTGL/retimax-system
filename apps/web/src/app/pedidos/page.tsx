@@ -1,9 +1,10 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ClienteDto, MaquinaDto, PedidoDto } from '@retimax/shared-types';
+import { ClienteDto, MaquinaDto, PedidoDto, ReciboReservaDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
+import { ReciboPrint } from '@/components/ReciboPrint';
 import { apiFetch } from '@/lib/api';
 
 import { formatDecimal } from '@/lib/numbers';
@@ -20,6 +21,7 @@ export default function PedidosPage() {
   const [total, setTotal] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [recibo, setRecibo] = useState<ReciboReservaDto | null>(null);
 
   const saldo = (() => {
     const t = parseFloat(total.replace(',', '.'));
@@ -55,7 +57,7 @@ export default function PedidosPage() {
         throw new Error('Anticipo y total deben ser números válidos (ej. 1500 o 1500.50)');
       }
       const saldoUsd = formatDecimal(saldo) ?? '0';
-      await apiFetch('/pedidos', {
+      const pedido = await apiFetch<PedidoDto>('/pedidos', {
         method: 'POST',
         body: JSON.stringify({
           clienteId,
@@ -66,6 +68,10 @@ export default function PedidosPage() {
           totalUsd,
         }),
       });
+      if (pedido.id) {
+        const r = await apiFetch<ReciboReservaDto>(`/pedidos/${pedido.id}/recibo`);
+        setRecibo(r);
+      }
       setShowForm(false);
       setClienteId('');
       setMaquinaId('');
@@ -81,7 +87,7 @@ export default function PedidosPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-6">
@@ -180,10 +186,58 @@ export default function PedidosPage() {
                 <p className="text-sm mt-2">
                   Total: ${p.totalUsd} — Anticipo: ${p.anticipoUsd} — Saldo: ${p.saldoUsd}
                 </p>
+                {p.reciboReserva && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const r = await apiFetch<ReciboReservaDto>(`/pedidos/${p.id}/recibo`);
+                      setRecibo(r);
+                    }}
+                    className="text-xs underline mt-2"
+                  >
+                    Imprimir recibo {p.reciboReserva.numero}
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </div>
+
+        {recibo && (
+          <ReciboPrint
+            title="Recibo de reserva"
+            numero={recibo.numero}
+            fechaEmision={recibo.fechaEmision}
+            onClose={() => setRecibo(null)}
+          >
+            <div className="space-y-2 text-sm">
+              <p>
+                <span className="text-[#6c757d]">Cliente:</span> {recibo.pedido?.cliente.nombre}
+              </p>
+              {recibo.pedido?.maquina && (
+                <p>
+                  <span className="text-[#6c757d]">Máquina:</span> {recibo.pedido.maquina.nombre} (
+                  {recibo.pedido.maquina.tipo})
+                </p>
+              )}
+              {recibo.pedido?.descripcionReferencia && (
+                <p>
+                  <span className="text-[#6c757d]">Referencia:</span>{' '}
+                  {recibo.pedido.descripcionReferencia}
+                </p>
+              )}
+              <hr className="my-3" />
+              <p>
+                Total: <strong>${recibo.pedido?.totalUsd}</strong> USD
+              </p>
+              <p>Anticipo: ${recibo.pedido?.anticipoUsd} USD</p>
+              <p>Saldo pendiente: ${recibo.pedido?.saldoUsd} USD</p>
+              <p className="text-xs text-[#6c757d] mt-2">
+                Vigencia de reserva: {recibo.vigenciaDias} días
+              </p>
+            </div>
+          </ReciboPrint>
+        )}
       </AppShell>
     </AuthGuard>
   );

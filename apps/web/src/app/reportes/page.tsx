@@ -27,7 +27,7 @@ export default function ReportesPage() {
 
   if (loading) {
     return (
-      <AuthGuard>
+      <AuthGuard adminOnly>
         <AppShell>
           <p className="text-[#6c757d]">Cargando reportes...</p>
         </AppShell>
@@ -40,7 +40,7 @@ export default function ReportesPage() {
   const { resumen, porEstado } = data;
 
   return (
-    <AuthGuard>
+    <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-6xl mx-auto space-y-6">
           <div>

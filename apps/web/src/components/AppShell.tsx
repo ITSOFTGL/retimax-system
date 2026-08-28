@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Rol } from '@retimax/shared-types';
 import { getUser, logout } from '@/lib/api';
 
-const navItems = [
+const adminNav = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/maquinas', label: 'Máquinas' },
+  { href: '/empleados', label: 'Empleados' },
   { href: '/pedidos', label: 'Pedidos' },
   { href: '/ventas', label: 'Ventas' },
   { href: '/reportes', label: 'Reportería' },
@@ -15,11 +17,14 @@ const navItems = [
   { href: '/proveedores', label: 'Proveedores' },
 ];
 
+const empleadoNav = [{ href: '/mis-trabajos', label: 'Mis trabajos' }];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const user = getUser<{ nombre: string; email: string }>();
+  const user = getUser<{ nombre: string; email: string; rol: Rol }>();
+  const navItems = user?.rol === Rol.EMPLEADO ? empleadoNav : adminNav;
 
   async function handleLogout() {
     await logout();
@@ -37,7 +42,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <h1 className="text-xl font-bold tracking-wide">
             RETI<span className="text-[#f5c842]">MAX</span>
           </h1>
-          <p className="text-xs text-[#6c757d] mt-1">Gestión de maquinaria</p>
+          <p className="text-xs text-[#6c757d] mt-1">
+            {user?.rol === Rol.EMPLEADO ? 'Portal de trabajador' : 'Gestión de maquinaria'}
+          </p>
         </div>
         <nav className="p-4 space-y-1">
           {navItems.map((item) => {

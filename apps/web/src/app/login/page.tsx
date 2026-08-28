@@ -2,7 +2,8 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '@/lib/api';
+import { login, getUser } from '@/lib/api';
+import { Rol } from '@retimax/shared-types';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -17,7 +18,8 @@ export default function LoginPage() {
     setError('');
     try {
       await login(email, password);
-      router.push('/dashboard');
+      const user = getUser<{ rol: Rol }>();
+      router.push(user?.rol === Rol.EMPLEADO ? '/mis-trabajos' : '/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
     } finally {

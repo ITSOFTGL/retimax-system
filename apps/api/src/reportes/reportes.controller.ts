@@ -1,7 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
+import { Rol } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { ReportesService } from './reportes.service';
 
 @Controller('reportes')
+@Roles(Rol.ADMIN)
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}
 

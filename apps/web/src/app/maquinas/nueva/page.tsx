@@ -66,7 +66,7 @@ export default function NuevaMaquinaPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-2xl mx-auto">
           <h2 className="text-2xl font-bold mb-2">Registrar máquina (compra Italia)</h2>

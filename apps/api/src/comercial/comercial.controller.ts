@@ -1,8 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Rol } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { ComercialService } from './comercial.service';
 import { CreatePedidoDto, CreateVentaDto, UpdatePedidoEstadoDto } from './dto/comercial.dto';
 
 @Controller()
+@Roles(Rol.ADMIN)
 export class ComercialController {
   constructor(private readonly comercialService: ComercialService) {}
 
@@ -29,5 +32,15 @@ export class ComercialController {
   @Post('ventas')
   createVenta(@Body() dto: CreateVentaDto) {
     return this.comercialService.createVenta(dto);
+  }
+
+  @Get('ventas/:id/recibo')
+  getReciboVenta(@Param('id') id: string) {
+    return this.comercialService.getReciboVenta(id);
+  }
+
+  @Get('pedidos/:id/recibo')
+  getReciboReserva(@Param('id') id: string) {
+    return this.comercialService.getReciboReserva(id);
   }
 }

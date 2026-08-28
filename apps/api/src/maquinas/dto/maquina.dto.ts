@@ -6,6 +6,7 @@ import {
   IsUUID,
   Matches,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { AreaIntervencion, EstadoMaquina, EtapaImagen, TipoIntervencion } from '@prisma/client';
 
@@ -41,6 +42,20 @@ export class CreateMaquinaDto {
 export class UpdateMaquinaDto {
   @IsOptional()
   @IsString()
+  @MinLength(1)
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  tipo?: string;
+
+  @IsOptional()
+  @IsUUID()
+  proveedorId?: string;
+
+  @IsOptional()
+  @IsString()
   descripcionLlegada?: string;
 
   @IsOptional()
@@ -66,6 +81,10 @@ export class UpdateMaquinaDto {
 export class UpdateMaquinaEstadoDto {
   @IsEnum(EstadoMaquina)
   estado!: EstadoMaquina;
+
+  @IsOptional()
+  @IsString()
+  motivo?: string;
 }
 
 export class UploadImagenDto {
@@ -87,9 +106,14 @@ export class RegistrarRecepcionDto {
   @MinLength(1)
   descripcionLlegada!: string;
 
+  @ValidateIf((o) => !o.empleadoDiagnostico)
+  @IsUUID()
+  empleadoDiagnosticoId?: string;
+
+  @ValidateIf((o) => !o.empleadoDiagnosticoId)
   @IsString()
   @MinLength(1)
-  empleadoDiagnostico!: string;
+  empleadoDiagnostico?: string;
 
   @IsOptional()
   @IsDateString()
@@ -97,9 +121,13 @@ export class RegistrarRecepcionDto {
 }
 
 export class CompletarDiagnosticoDto {
+  @IsOptional()
+  @IsUUID()
+  responsableId?: string;
+
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  responsable!: string;
+  responsable?: string;
 
   @IsOptional()
   @IsString()
@@ -132,7 +160,6 @@ export class CreateIntervencionDto {
   @MinLength(1)
   descripcion!: string;
 
-  @IsString()
-  @MinLength(1)
-  responsable!: string;
+  @IsUUID()
+  responsableId!: string;
 }

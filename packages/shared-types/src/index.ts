@@ -1,6 +1,29 @@
 export enum Rol {
   ADMIN = 'ADMIN',
-  OPERARIO = 'OPERARIO',
+  EMPLEADO = 'EMPLEADO',
+}
+
+export enum Especialidad {
+  MECANICO = 'MECANICO',
+  ELECTRICO = 'ELECTRICO',
+  PINTOR = 'PINTOR',
+  MANTENIMIENTO_GENERAL = 'MANTENIMIENTO_GENERAL',
+  OTRO = 'OTRO',
+}
+
+export enum EstadoIntervencion {
+  ASIGNADO = 'ASIGNADO',
+  EN_PROCESO = 'EN_PROCESO',
+  FINALIZADO = 'FINALIZADO',
+  APROBADO = 'APROBADO',
+  RECHAZADO = 'RECHAZADO',
+  CANCELADO = 'CANCELADO',
+}
+
+export enum EstadoAprobacion {
+  PENDIENTE = 'PENDIENTE',
+  APROBADO = 'APROBADO',
+  RECHAZADO = 'RECHAZADO',
 }
 
 export enum EstadoMaquina {
@@ -46,6 +69,7 @@ export interface UsuarioDto {
   email: string;
   rol: Rol;
   activo: boolean;
+  empleadoId?: string | null;
   createdAt: string;
 }
 
@@ -61,6 +85,20 @@ export interface AuthTokens {
 
 export interface AuthResponse extends AuthTokens {
   usuario: UsuarioDto;
+}
+
+export interface EmpleadoDto {
+  id: string;
+  nombre: string;
+  apellido: string;
+  nombreCompleto: string;
+  telefono?: string | null;
+  email: string;
+  especialidad: Especialidad;
+  activo: boolean;
+  usuarioId?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProveedorDto {
@@ -89,11 +127,40 @@ export interface ImagenMaquinaDto {
 export interface IntervencionDto {
   id: string;
   maquinaId: string;
+  maquina?: {
+    id: string;
+    nombre: string;
+    tipo: string;
+    estado: string;
+    proveedor?: string;
+  };
   tipo: TipoIntervencion;
   area: AreaIntervencion;
   descripcion: string;
-  responsable: string;
+  responsableId?: string | null;
+  responsableNombre?: string | null;
+  responsable?: EmpleadoDto | null;
+  estadoIntervencion?: EstadoIntervencion;
+  detalleTrabajo?: string | null;
+  observaciones?: string | null;
+  fechaAsignacion?: string | null;
+  fechaInicio?: string | null;
+  fechaFinalizacion?: string | null;
+  fechaAprobacion?: string | null;
+  estadoAprobacion?: EstadoAprobacion;
   registradoPor: UsuarioDto;
+  aprobadoPor?: UsuarioDto | null;
+  finalizadoPor?: { id: string; nombre: string } | null;
+  createdAt: string;
+}
+
+export interface HistorialEstadoDto {
+  id: string;
+  maquinaId: string;
+  estado: EstadoMaquina;
+  anterior?: EstadoMaquina | null;
+  motivo?: string | null;
+  creadoPor: UsuarioDto;
   createdAt: string;
 }
 
@@ -109,6 +176,8 @@ export interface MaquinaDto {
   notaAudioUrl?: string | null;
   fechaDespacho?: string | null;
   empleadoDiagnostico?: string | null;
+  empleadoDiagnosticoId?: string | null;
+  empleadoDiag?: { id: string; nombreCompleto: string; especialidad: string } | null;
   precioVentaUsd?: string | null;
   tipoCambioUsado?: string | null;
   precioVentaBob?: string | null;
@@ -118,8 +187,22 @@ export interface MaquinaDto {
   creadoPor?: UsuarioDto;
   imagenes?: ImagenMaquinaDto[];
   intervenciones?: IntervencionDto[];
+  historialEstados?: HistorialEstadoDto[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ReciboReservaResumenDto {
+  id: string;
+  numero: string;
+  fechaEmision: string;
+  vigenciaDias: number;
+}
+
+export interface ReciboVentaResumenDto {
+  id: string;
+  numero: string;
+  fechaEmision: string;
 }
 
 export interface PedidoDto {
@@ -135,6 +218,7 @@ export interface PedidoDto {
   totalUsd: string;
   fechaEntregaEstimada?: string | null;
   estado: EstadoPedido;
+  reciboReserva?: ReciboReservaResumenDto | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,7 +233,42 @@ export interface VentaDto {
   precioFinalBob: string;
   tipoCambio: string;
   fechaEntrega: string;
+  reciboVenta?: ReciboVentaResumenDto | null;
   createdAt: string;
+}
+
+export interface ReciboVentaDto {
+  id: string;
+  numero: string;
+  ventaId: string;
+  fechaEmision: string;
+  venta?: {
+    id: string;
+    precioFinalUsd: string;
+    precioFinalBob: string;
+    tipoCambio: string;
+    fechaEntrega: string;
+    cliente: { nombre: string; telefono?: string | null };
+    maquina: { nombre: string; tipo: string; proveedor?: string };
+  };
+}
+
+export interface ReciboReservaDto {
+  id: string;
+  numero: string;
+  pedidoId: string;
+  fechaEmision: string;
+  vigenciaDias: number;
+  pedido?: {
+    id: string;
+    anticipoUsd: string;
+    saldoUsd: string;
+    totalUsd: string;
+    fechaEntregaEstimada?: string | null;
+    descripcionReferencia?: string | null;
+    cliente: { nombre: string; telefono?: string | null };
+    maquina?: { nombre: string; tipo: string } | null;
+  };
 }
 
 export interface DashboardResumen {
@@ -227,13 +346,23 @@ export interface CreateMaquinaRequest {
 
 export interface UpdateMaquinaEstadoRequest {
   estado: EstadoMaquina;
+  motivo?: string;
 }
 
 export interface CreateIntervencionRequest {
   tipo: TipoIntervencion;
   area: AreaIntervencion;
   descripcion: string;
-  responsable: string;
+  responsableId: string;
+}
+
+export interface CreateEmpleadoRequest {
+  nombre: string;
+  apellido: string;
+  email: string;
+  password: string;
+  especialidad: Especialidad;
+  telefono?: string;
 }
 
 export interface CreateProveedorRequest {

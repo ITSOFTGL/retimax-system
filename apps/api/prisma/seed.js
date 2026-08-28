@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await bcrypt.hash('Admin123!', 12);
 
-  await prisma.usuario.upsert({
+  const admin = await prisma.usuario.upsert({
     where: { email: 'admin@retimax.local' },
     update: {},
     create: {
@@ -17,7 +17,7 @@ async function main() {
     },
   });
 
-  await prisma.proveedor.upsert({
+  const proveedor = await prisma.proveedor.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
     update: {},
     create: {
@@ -26,7 +26,7 @@ async function main() {
     },
   });
 
-  await prisma.cliente.upsert({
+  const cliente = await prisma.cliente.upsert({
     where: { id: '00000000-0000-0000-0000-000000000002' },
     update: {},
     create: {
@@ -37,7 +37,36 @@ async function main() {
     },
   });
 
-  console.log('Seed completado');
+  const empPassword = await bcrypt.hash('Empleado123!', 12);
+  const empleado = await prisma.empleado.upsert({
+    where: { email: 'alex@retimax.local' },
+    update: {},
+    create: {
+      nombre: 'Alex',
+      apellido: 'Demo',
+      email: 'alex@retimax.local',
+      especialidad: 'ELECTRICO',
+    },
+  });
+
+  await prisma.usuario.upsert({
+    where: { email: 'alex@retimax.local' },
+    update: { empleadoId: empleado.id, rol: 'EMPLEADO' },
+    create: {
+      nombre: 'Alex Demo',
+      email: 'alex@retimax.local',
+      passwordHash: empPassword,
+      rol: 'EMPLEADO',
+      empleadoId: empleado.id,
+    },
+  });
+
+  console.log('Seed completado:', {
+    admin: admin.email,
+    empleado: empleado.email,
+    proveedor: proveedor.nombre,
+    cliente: cliente.nombre,
+  });
 }
 
 main()

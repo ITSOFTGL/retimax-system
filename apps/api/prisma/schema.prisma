@@ -9,7 +9,15 @@ datasource db {
 
 enum Rol {
   ADMIN
-  OPERARIO
+  EMPLEADO
+}
+
+enum Especialidad {
+  MECANICO
+  ELECTRICO
+  PINTOR
+  MANTENIMIENTO_GENERAL
+  OTRO
 }
 
 enum EstadoMaquina {
@@ -49,6 +57,21 @@ enum EstadoPedido {
   CANCELADO
 }
 
+enum EstadoIntervencion {
+  ASIGNADO
+  EN_PROCESO
+  FINALIZADO
+  APROBADO
+  RECHAZADO
+  CANCELADO
+}
+
+enum EstadoAprobacion {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
@@ -56,14 +79,37 @@ model Usuario {
   passwordHash String
   rol          Rol      @default(ADMIN)
   activo       Boolean  @default(true)
+  empleadoId   String?  @unique
+  empleado     Empleado? @relation(fields: [empleadoId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  maquinasCreadas Maquina[]      @relation("MaquinaCreadaPor")
-  intervenciones  Intervencion[]
-  refreshTokens   RefreshToken[]
+  maquinasCreadas   Maquina[]         @relation("MaquinaCreadaPor")
+  intervenciones    Intervencion[]    @relation("RegistradoPor")
+  aprobaciones      Intervencion[]    @relation("AprobadoPor")
+  historialEstados  HistorialEstado[]
+  refreshTokens     RefreshToken[]
 
   @@map("usuarios")
+}
+
+model Empleado {
+  id           String       @id @default(uuid())
+  nombre       String
+  apellido     String
+  telefono     String?
+  email        String       @unique
+  especialidad Especialidad
+  activo       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  usuario                   Usuario?
+  intervencionesAsignadas   Intervencion[] @relation("EmpleadoAsignado")
+  intervencionesFinalizadas Intervencion[] @relation("EmpleadoFinalizo")
+  diagnosticosAsignados     Maquina[]      @relation("DiagnosticoAsignado")
+
+  @@map("empleados")
 }
 
 model RefreshToken {
@@ -108,10 +154,12 @@ model Maquina {
   proveedor            Proveedor     @relation(fields: [proveedorId], references: [id])
   estado               EstadoMaquina @default(COMPRADA_ITALIA)
   descripcionLlegada   String?
-  descripcionAcordada String?
-  notaAudioUrl        String?
-  fechaDespacho       DateTime?
-  empleadoDiagnostico String?
+  descripcionAcordada  String?
+  notaAudioUrl         String?
+  fechaDespacho        DateTime?
+  empleadoDiagnostico  String?
+  empleadoDiagnosticoId String?
+  empleadoDiag          Empleado?    @relation("DiagnosticoAsignado", fields: [empleadoDiagnosticoId], references: [id])
   precioVentaUsd       Decimal?      @db.Decimal(10, 2)
   tipoCambioUsado      Decimal?      @db.Decimal(10, 4)
   precioVentaBob       Decimal?      @db.Decimal(10, 2)
@@ -123,10 +171,11 @@ model Maquina {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
-  imagenes       ImagenMaquina[]
-  intervenciones Intervencion[]
-  pedidos        Pedido[]
-  venta          Venta?
+  imagenes         ImagenMaquina[]
+  intervenciones   Intervencion[]
+  pedidos          Pedido[]
+  venta            Venta?
+  historialEstados HistorialEstado[]
 
   @@map("maquinas")
   @@index([estado])
@@ -146,18 +195,49 @@ model ImagenMaquina {
 }
 
 model Intervencion {
-  id              String           @id @default(uuid())
-  maquinaId       String
-  maquina         Maquina          @relation(fields: [maquinaId], references: [id], onDelete: Cascade)
-  tipo            TipoIntervencion
-  area            AreaIntervencion
-  descripcion     String
-  responsable     String
-  registradoPorId String
-  registradoPor   Usuario          @relation(fields: [registradoPorId], references: [id])
-  createdAt       DateTime         @default(now())
+  id                 String             @id @default(uuid())
+  maquinaId          String
+  maquina            Maquina            @relation(fields: [maquinaId], references: [id], onDelete: Cascade)
+  tipo               TipoIntervencion
+  area               AreaIntervencion
+  descripcion        String
+  responsableId      String?
+  responsable        Empleado?          @relation("EmpleadoAsignado", fields: [responsableId], references: [id])
+  responsableNombre  String?
+  estadoIntervencion EstadoIntervencion @default(ASIGNADO)
+  detalleTrabajo     String?
+  observaciones      String?
+  fechaAsignacion    DateTime?
+  fechaInicio        DateTime?
+  fechaFinalizacion  DateTime?
+  fechaAprobacion    DateTime?
+  aprobadoPorId      String?
+  aprobadoPor        Usuario?           @relation("AprobadoPor", fields: [aprobadoPorId], references: [id])
+  estadoAprobacion   EstadoAprobacion   @default(PENDIENTE)
+  finalizadoPorId    String?
+  finalizadoPor      Empleado?          @relation("EmpleadoFinalizo", fields: [finalizadoPorId], references: [id])
+  registradoPorId    String
+  registradoPor      Usuario            @relation("RegistradoPor", fields: [registradoPorId], references: [id])
+  createdAt          DateTime           @default(now())
 
   @@map("intervenciones")
+  @@index([maquinaId])
+  @@index([responsableId])
+  @@index([estadoIntervencion])
+}
+
+model HistorialEstado {
+  id          String        @id @default(uuid())
+  maquinaId   String
+  maquina     Maquina       @relation(fields: [maquinaId], references: [id], onDelete: Cascade)
+  estado      EstadoMaquina
+  anterior    EstadoMaquina?
+  motivo      String?
+  creadoPorId String
+  creadoPor   Usuario       @relation(fields: [creadoPorId], references: [id])
+  createdAt   DateTime      @default(now())
+
+  @@map("historial_estados")
   @@index([maquinaId])
 }
 
@@ -177,6 +257,8 @@ model Pedido {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
+  reciboReserva ReciboReserva?
+
   @@map("pedidos")
 }
 
@@ -192,5 +274,30 @@ model Venta {
   fechaEntrega   DateTime
   createdAt      DateTime @default(now())
 
+  reciboVenta ReciboVenta?
+
   @@map("ventas")
+}
+
+model ReciboVenta {
+  id           String   @id @default(uuid())
+  numero       String   @unique
+  ventaId      String   @unique
+  venta        Venta    @relation(fields: [ventaId], references: [id])
+  fechaEmision DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@map("recibos_venta")
+}
+
+model ReciboReserva {
+  id           String   @id @default(uuid())
+  numero       String   @unique
+  pedidoId     String   @unique
+  pedido       Pedido   @relation(fields: [pedidoId], references: [id])
+  fechaEmision DateTime @default(now())
+  vigenciaDias Int      @default(15)
+  createdAt    DateTime @default(now())
+
+  @@map("recibos_reserva")
 }

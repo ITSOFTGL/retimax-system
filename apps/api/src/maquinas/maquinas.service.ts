@@ -4,8 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AreaIntervencion, EstadoMaquina, EtapaImagen, Prisma, TipoIntervencion, Usuario } from '@prisma/client';
-import { toMaquinaDto } from '../common/mappers';
+import {
+  AreaIntervencion,
+  EstadoIntervencion,
+  EstadoMaquina,
+  EtapaImagen,
+  Prisma,
+  TipoIntervencion,
+  Usuario,
+} from '@prisma/client';
+import { toIntervencionDto, toMaquinaDto } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
 import {
@@ -21,23 +29,34 @@ import {
 
 const MAX_IMAGENES_POR_ETAPA = 10;
 
-const VALID_TRANSITIONS: Record<EstadoMaquina, EstadoMaquina[]> = {
-  COMPRADA_ITALIA: [EstadoMaquina.EN_TRANSITO],
-  EN_TRANSITO: [EstadoMaquina.RECIBIDA],
-  RECIBIDA: [EstadoMaquina.EN_DIAGNOSTICO],
-  EN_DIAGNOSTICO: [EstadoMaquina.EN_MANTENIMIENTO, EstadoMaquina.LISTA_PARA_VENTA],
-  EN_MANTENIMIENTO: [EstadoMaquina.LISTA_PARA_VENTA],
-  LISTA_PARA_VENTA: [EstadoMaquina.RESERVADA, EstadoMaquina.VENDIDA],
-  RESERVADA: [EstadoMaquina.LISTA_PARA_VENTA, EstadoMaquina.VENDIDA],
-  VENDIDA: [],
-};
-
 @Injectable()
 export class MaquinasService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
+
+  private includeDetail() {
+    return {
+      proveedor: true,
+      creadoPor: true,
+      empleadoDiag: true,
+      imagenes: { orderBy: { createdAt: 'desc' as const } },
+      intervenciones: {
+        orderBy: { createdAt: 'asc' as const },
+        include: {
+          registradoPor: true,
+          responsable: true,
+          aprobadoPor: true,
+          finalizadoPor: true,
+        },
+      },
+      historialEstados: {
+        orderBy: { createdAt: 'desc' as const },
+        include: { creadoPor: true },
+      },
+    };
+  }
 
   async findAll(estado?: EstadoMaquina) {
     const maquinas = await this.prisma.maquina.findMany({
@@ -54,94 +73,137 @@ export class MaquinasService {
   async findOne(id: string) {
     const maquina = await this.prisma.maquina.findUnique({
       where: { id },
-      include: {
-        proveedor: true,
-        creadoPor: true,
-        imagenes: { orderBy: { createdAt: 'desc' } },
-        intervenciones: {
-          orderBy: { createdAt: 'asc' },
-          include: { registradoPor: true },
-        },
-      },
+      include: this.includeDetail(),
     });
     if (!maquina) throw new NotFoundException('Máquina no encontrada');
     return toMaquinaDto(maquina);
+  }
+
+  async getHistorialEstados(id: string) {
+    await this.ensureExists(id);
+    const rows = await this.prisma.historialEstado.findMany({
+      where: { maquinaId: id },
+      include: { creadoPor: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((h) => ({
+      id: h.id,
+      maquinaId: h.maquinaId,
+      estado: h.estado,
+      anterior: h.anterior,
+      motivo: h.motivo,
+      creadoPor: {
+        id: h.creadoPor.id,
+        nombre: h.creadoPor.nombre,
+        email: h.creadoPor.email,
+      },
+      createdAt: h.createdAt.toISOString(),
+    }));
   }
 
   async create(dto: CreateMaquinaDto, user: Usuario) {
     const proveedor = await this.prisma.proveedor.findUnique({ where: { id: dto.proveedorId } });
     if (!proveedor) throw new BadRequestException('Proveedor no encontrado');
 
-    const maquina = await this.prisma.maquina.create({
-      data: {
-        nombre: dto.nombre,
-        tipo: dto.tipo,
-        proveedorId: dto.proveedorId,
-        descripcionLlegada: dto.descripcionLlegada,
-        descripcionAcordada: dto.descripcionAcordada ?? dto.descripcionLlegada,
-        fechaCompra: dto.fechaCompra ? new Date(dto.fechaCompra) : undefined,
-        fechaLlegadaEstimada: dto.fechaLlegadaEstimada
-          ? new Date(dto.fechaLlegadaEstimada)
-          : undefined,
-        creadoPorId: user.id,
-      },
-      include: { proveedor: true, creadoPor: true },
+    const maquina = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.maquina.create({
+        data: {
+          nombre: dto.nombre,
+          tipo: dto.tipo,
+          proveedorId: dto.proveedorId,
+          descripcionLlegada: dto.descripcionLlegada,
+          descripcionAcordada: dto.descripcionAcordada ?? dto.descripcionLlegada,
+          fechaCompra: dto.fechaCompra ? new Date(dto.fechaCompra) : undefined,
+          fechaLlegadaEstimada: dto.fechaLlegadaEstimada
+            ? new Date(dto.fechaLlegadaEstimada)
+            : undefined,
+          creadoPorId: user.id,
+        },
+        include: { proveedor: true, creadoPor: true },
+      });
+
+      await tx.historialEstado.create({
+        data: {
+          maquinaId: created.id,
+          estado: EstadoMaquina.COMPRADA_ITALIA,
+          anterior: null,
+          motivo: 'Registro inicial',
+          creadoPorId: user.id,
+        },
+      });
+
+      return created;
     });
+
     return toMaquinaDto(maquina);
   }
 
   async update(id: string, dto: UpdateMaquinaDto) {
-    await this.ensureExists(id);
-    const maquina = await this.prisma.maquina.update({
+    const maquina = await this.ensureExists(id);
+    if (maquina.estado === EstadoMaquina.VENDIDA) {
+      throw new BadRequestException('No se puede editar una máquina vendida');
+    }
+
+    if (dto.proveedorId) {
+      const proveedor = await this.prisma.proveedor.findUnique({ where: { id: dto.proveedorId } });
+      if (!proveedor) throw new BadRequestException('Proveedor no encontrado');
+    }
+
+    const updated = await this.prisma.maquina.update({
       where: { id },
       data: {
+        nombre: dto.nombre,
+        tipo: dto.tipo,
+        proveedorId: dto.proveedorId,
         descripcionLlegada: dto.descripcionLlegada,
         fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : undefined,
         precioVentaUsd: dto.precioVentaUsd ? new Prisma.Decimal(dto.precioVentaUsd) : undefined,
         tipoCambioUsado: dto.tipoCambioUsado ? new Prisma.Decimal(dto.tipoCambioUsado) : undefined,
         precioVentaBob: dto.precioVentaBob ? new Prisma.Decimal(dto.precioVentaBob) : undefined,
       },
-      include: { proveedor: true, creadoPor: true, imagenes: true },
+      include: this.includeDetail(),
     });
-    return toMaquinaDto(maquina);
+    return toMaquinaDto(updated);
   }
 
-  async registrarTransito(id: string, dto: RegistrarTransitoDto) {
+  async registrarTransito(id: string, dto: RegistrarTransitoDto, user: Usuario) {
     const maquina = await this.prisma.maquina.findUnique({ where: { id } });
     if (!maquina) throw new NotFoundException('Máquina no encontrada');
     if (maquina.estado !== EstadoMaquina.COMPRADA_ITALIA) {
       throw new BadRequestException('Solo se puede despachar desde Comprada en Italia');
     }
 
-    const updated = await this.prisma.maquina.update({
-      where: { id },
-      data: {
-        estado: EstadoMaquina.EN_TRANSITO,
+    const updated = await this.changeEstado(
+      maquina,
+      EstadoMaquina.EN_TRANSITO,
+      user.id,
+      'Despacho a tránsito',
+      {
         fechaDespacho: new Date(dto.fechaDespacho),
         fechaLlegadaEstimada: dto.fechaLlegadaEstimada
           ? new Date(dto.fechaLlegadaEstimada)
           : maquina.fechaLlegadaEstimada,
       },
-      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
-    });
+    );
     return toMaquinaDto(updated);
   }
 
-  async confirmarRecibida(id: string, fechaLlegadaReal?: string) {
+  async confirmarRecibida(id: string, user: Usuario, fechaLlegadaReal?: string) {
     const maquina = await this.prisma.maquina.findUnique({ where: { id } });
     if (!maquina) throw new NotFoundException('Máquina no encontrada');
     if (maquina.estado !== EstadoMaquina.EN_TRANSITO) {
       throw new BadRequestException('Solo se puede recibir desde En tránsito');
     }
 
-    const updated = await this.prisma.maquina.update({
-      where: { id },
-      data: {
-        estado: EstadoMaquina.RECIBIDA,
+    const updated = await this.changeEstado(
+      maquina,
+      EstadoMaquina.RECIBIDA,
+      user.id,
+      'Confirmación de recepción',
+      {
         fechaLlegadaReal: fechaLlegadaReal ? new Date(fechaLlegadaReal) : new Date(),
       },
-      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
-    });
+    );
     return toMaquinaDto(updated);
   }
 
@@ -161,26 +223,65 @@ export class MaquinasService {
       await this.uploadImagenes(id, { etapa: EtapaImagen.LLEGADA }, files);
     }
 
-    const updated = await this.prisma.maquina.update({
-      where: { id },
-      data: {
-        descripcionLlegada: dto.descripcionLlegada,
-        empleadoDiagnostico: dto.empleadoDiagnostico,
-        fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : maquina.fechaLlegadaReal,
-        estado: EstadoMaquina.EN_DIAGNOSTICO,
-      },
-      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
-    });
+    let empleadoNombre = dto.empleadoDiagnostico;
+    let empleadoId = dto.empleadoDiagnosticoId;
 
-    await this.prisma.intervencion.create({
-      data: {
-        maquinaId: id,
-        tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
-        area: AreaIntervencion.MANTENIMIENTO_GENERAL,
-        descripcion: `Recepción verificada. Asignado a ${dto.empleadoDiagnostico} para diagnóstico.`,
-        responsable: user.nombre,
-        registradoPorId: user.id,
-      },
+    if (empleadoId) {
+      const emp = await this.prisma.empleado.findUnique({ where: { id: empleadoId } });
+      if (!emp) throw new BadRequestException('Empleado no encontrado');
+      empleadoNombre = `${emp.nombre} ${emp.apellido}`;
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.historialEstado.create({
+        data: {
+          maquinaId: id,
+          estado: EstadoMaquina.EN_DIAGNOSTICO,
+          anterior: maquina.estado,
+          motivo: 'Recepción verificada',
+          creadoPorId: user.id,
+        },
+      });
+
+      const m = await tx.maquina.update({
+        where: { id },
+        data: {
+          descripcionLlegada: dto.descripcionLlegada,
+          empleadoDiagnostico: empleadoNombre,
+          empleadoDiagnosticoId: empleadoId,
+          fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : maquina.fechaLlegadaReal,
+          estado: EstadoMaquina.EN_DIAGNOSTICO,
+        },
+        include: this.includeDetail(),
+      });
+
+      if (empleadoId) {
+        await tx.intervencion.create({
+          data: {
+            maquinaId: id,
+            tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
+            area: AreaIntervencion.MANTENIMIENTO_GENERAL,
+            descripcion: `Recepción verificada. Asignado a ${empleadoNombre} para diagnóstico.`,
+            responsableId: empleadoId,
+            fechaAsignacion: new Date(),
+            estadoIntervencion: EstadoIntervencion.ASIGNADO,
+            registradoPorId: user.id,
+          },
+        });
+      } else {
+        await tx.intervencion.create({
+          data: {
+            maquinaId: id,
+            tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
+            area: AreaIntervencion.MANTENIMIENTO_GENERAL,
+            descripcion: `Recepción verificada. Asignado a ${empleadoNombre} para diagnóstico.`,
+            responsableNombre: empleadoNombre,
+            registradoPorId: user.id,
+          },
+        });
+      }
+
+      return m;
     });
 
     return toMaquinaDto(updated);
@@ -208,7 +309,8 @@ export class MaquinasService {
           tipo: TipoIntervencion.DIAGNOSTICO_INICIAL,
           area: a.area,
           descripcion: a.texto,
-          responsable: dto.responsable,
+          responsableId: dto.responsableId,
+          responsableNombre: dto.responsable,
           registradoPorId: user.id,
         },
       });
@@ -222,11 +324,12 @@ export class MaquinasService {
       ? EstadoMaquina.EN_MANTENIMIENTO
       : EstadoMaquina.LISTA_PARA_VENTA;
 
-    const updated = await this.prisma.maquina.update({
-      where: { id },
-      data: { estado: nuevoEstado },
-      include: { proveedor: true, creadoPor: true, imagenes: true, intervenciones: { include: { registradoPor: true } } },
-    });
+    const updated = await this.changeEstado(
+      maquina,
+      nuevoEstado,
+      user.id,
+      requiereMantenimiento ? 'Diagnóstico: requiere mantenimiento' : 'Diagnóstico: lista para venta',
+    );
     return toMaquinaDto(updated);
   }
 
@@ -240,22 +343,21 @@ export class MaquinasService {
     return { url: stored.url };
   }
 
-  async updateEstado(id: string, dto: UpdateMaquinaEstadoDto) {
+  async updateEstado(id: string, dto: UpdateMaquinaEstadoDto, user: Usuario) {
     const maquina = await this.prisma.maquina.findUnique({ where: { id } });
     if (!maquina) throw new NotFoundException('Máquina no encontrada');
 
-    const allowed = VALID_TRANSITIONS[maquina.estado];
-    if (!allowed.includes(dto.estado)) {
+    if (maquina.estado === EstadoMaquina.VENDIDA && dto.estado !== EstadoMaquina.VENDIDA) {
       throw new BadRequestException(
-        `Transición inválida de ${maquina.estado} a ${dto.estado}`,
+        'No se puede retroceder el estado de una máquina vendida. Anule la venta primero.',
       );
     }
 
-    const updated = await this.prisma.maquina.update({
-      where: { id },
-      data: { estado: dto.estado },
-      include: { proveedor: true, creadoPor: true },
-    });
+    if (dto.estado === maquina.estado) {
+      throw new BadRequestException('La máquina ya está en ese estado');
+    }
+
+    const updated = await this.changeEstado(maquina, dto.estado, user.id, dto.motivo);
     return toMaquinaDto(updated);
   }
 
@@ -305,35 +407,30 @@ export class MaquinasService {
 
   async createIntervencion(id: string, dto: CreateIntervencionDto, user: Usuario) {
     await this.ensureExists(id);
+
+    const empleado = await this.prisma.empleado.findUnique({ where: { id: dto.responsableId } });
+    if (!empleado || !empleado.activo) {
+      throw new BadRequestException('Empleado no encontrado o inactivo');
+    }
+
     const intervencion = await this.prisma.intervencion.create({
       data: {
         maquinaId: id,
         tipo: dto.tipo,
         area: dto.area,
         descripcion: dto.descripcion,
-        responsable: dto.responsable,
+        responsableId: dto.responsableId,
+        fechaAsignacion: new Date(),
+        estadoIntervencion: EstadoIntervencion.ASIGNADO,
         registradoPorId: user.id,
       },
-      include: { registradoPor: true },
+      include: {
+        registradoPor: true,
+        responsable: true,
+      },
     });
 
-    return {
-      id: intervencion.id,
-      maquinaId: intervencion.maquinaId,
-      tipo: intervencion.tipo,
-      area: intervencion.area,
-      descripcion: intervencion.descripcion,
-      responsable: intervencion.responsable,
-      registradoPor: {
-        id: intervencion.registradoPor.id,
-        nombre: intervencion.registradoPor.nombre,
-        email: intervencion.registradoPor.email,
-        rol: intervencion.registradoPor.rol,
-        activo: intervencion.registradoPor.activo,
-        createdAt: intervencion.registradoPor.createdAt.toISOString(),
-      },
-      createdAt: intervencion.createdAt.toISOString(),
-    };
+    return toIntervencionDto(intervencion);
   }
 
   async getDashboardResumen() {
@@ -358,8 +455,38 @@ export class MaquinasService {
     return { total, porEstado };
   }
 
+  private async changeEstado(
+    maquina: { id: string; estado: EstadoMaquina },
+    nuevoEstado: EstadoMaquina,
+    userId: string,
+    motivo?: string,
+    extraData?: Prisma.MaquinaUpdateInput,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.historialEstado.create({
+        data: {
+          maquinaId: maquina.id,
+          estado: nuevoEstado,
+          anterior: maquina.estado,
+          motivo: motivo ?? null,
+          creadoPorId: userId,
+        },
+      });
+
+      return tx.maquina.update({
+        where: { id: maquina.id },
+        data: {
+          estado: nuevoEstado,
+          ...(extraData ?? {}),
+        },
+        include: this.includeDetail(),
+      });
+    });
+  }
+
   private async ensureExists(id: string) {
     const exists = await this.prisma.maquina.findUnique({ where: { id } });
     if (!exists) throw new NotFoundException('Máquina no encontrada');
+    return exists;
   }
 }

@@ -1,20 +1,9 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  UploadedFile,
-  UploadedFiles,
-  UseInterceptors,
-} from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { EstadoMaquina, Usuario } from '@prisma/client';
+import { EstadoMaquina, Rol, Usuario } from '@prisma/client';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import {
   CreateIntervencionDto,
   CreateMaquinaDto,
@@ -28,6 +17,7 @@ import {
 import { MaquinasService } from './maquinas.service';
 
 @Controller('maquinas')
+@Roles(Rol.ADMIN)
 export class MaquinasController {
   constructor(private readonly maquinasService: MaquinasService) {}
 
@@ -39,6 +29,11 @@ export class MaquinasController {
   @Get()
   findAll(@Query('estado') estado?: EstadoMaquina) {
     return this.maquinasService.findAll(estado);
+  }
+
+  @Get(':id/historial-estados')
+  getHistorial(@Param('id') id: string) {
+    return this.maquinasService.getHistorialEstados(id);
   }
 
   @Get(':id')
@@ -57,8 +52,12 @@ export class MaquinasController {
   }
 
   @Patch(':id/estado')
-  updateEstado(@Param('id') id: string, @Body() dto: UpdateMaquinaEstadoDto) {
-    return this.maquinasService.updateEstado(id, dto);
+  updateEstado(
+    @Param('id') id: string,
+    @Body() dto: UpdateMaquinaEstadoDto,
+    @CurrentUser() user: Usuario,
+  ) {
+    return this.maquinasService.updateEstado(id, dto, user);
   }
 
   @Post(':id/imagenes')
@@ -94,16 +93,21 @@ export class MaquinasController {
   }
 
   @Post(':id/transito')
-  registrarTransito(@Param('id') id: string, @Body() dto: RegistrarTransitoDto) {
-    return this.maquinasService.registrarTransito(id, dto);
+  registrarTransito(
+    @Param('id') id: string,
+    @Body() dto: RegistrarTransitoDto,
+    @CurrentUser() user: Usuario,
+  ) {
+    return this.maquinasService.registrarTransito(id, dto, user);
   }
 
   @Post(':id/recibida')
   confirmarRecibida(
     @Param('id') id: string,
     @Body() body: { fechaLlegadaReal?: string },
+    @CurrentUser() user: Usuario,
   ) {
-    return this.maquinasService.confirmarRecibida(id, body.fechaLlegadaReal);
+    return this.maquinasService.confirmarRecibida(id, user, body.fechaLlegadaReal);
   }
 
   @Post(':id/recepcion')

@@ -4,9 +4,12 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import {
   AreaIntervencion,
-  EtapaImagen,
+  EmpleadoDto,
+  EstadoIntervencion,
   EstadoMaquina,
+  EtapaImagen,
   MaquinaDto,
+  ProveedorDto,
   TipoIntervencion,
 } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
@@ -26,6 +29,15 @@ import {
 export default function MaquinaDetailPage() {
   const params = useParams<{ id: string }>();
   const [maquina, setMaquina] = useState<MaquinaDto | null>(null);
+  const [empleados, setEmpleados] = useState<EmpleadoDto[]>([]);
+  const [proveedores, setProveedores] = useState<ProveedorDto[]>([]);
+  const [editNombre, setEditNombre] = useState('');
+  const [editTipo, setEditTipo] = useState('');
+  const [editProveedorId, setEditProveedorId] = useState('');
+  const [editDescripcion, setEditDescripcion] = useState('');
+  const [nuevoEstado, setNuevoEstado] = useState<EstadoMaquina | ''>('');
+  const [motivoEstado, setMotivoEstado] = useState('');
+  const [empleadoDiagnosticoId, setEmpleadoDiagnosticoId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -36,7 +48,6 @@ export default function MaquinaDetailPage() {
   const [fechaRecibida, setFechaRecibida] = useState('');
 
   const [recepcionDesc, setRecepcionDesc] = useState('');
-  const [empleadoDiagnostico, setEmpleadoDiagnostico] = useState('');
   const [fotosLlegada, setFotosLlegada] = useState<File[]>([]);
 
   const [diagMecanica, setDiagMecanica] = useState('');
@@ -53,15 +64,25 @@ export default function MaquinaDetailPage() {
   const [tipo, setTipo] = useState<TipoIntervencion>(TipoIntervencion.TRABAJO_REALIZADO);
   const [area, setArea] = useState<AreaIntervencion>(AreaIntervencion.MECANICA);
   const [descripcion, setDescripcion] = useState('');
-  const [responsable, setResponsable] = useState('');
+  const [responsableId, setResponsableId] = useState('');
 
   async function load() {
     setLoading(true);
     try {
-      const data = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`);
+      const [data, emps, provs] = await Promise.all([
+        apiFetch<MaquinaDto>(`/maquinas/${params.id}`),
+        apiFetch<EmpleadoDto[]>('/empleados'),
+        apiFetch<ProveedorDto[]>('/proveedores'),
+      ]);
       setMaquina(data);
+      setEmpleados(emps);
+      setProveedores(provs);
+      setEditNombre(data.nombre);
+      setEditTipo(data.tipo);
+      setEditProveedorId(data.proveedorId);
+      setEditDescripcion(data.descripcionLlegada ?? '');
       setRecepcionDesc(data.descripcionLlegada ?? '');
-      setEmpleadoDiagnostico(data.empleadoDiagnostico ?? '');
+      setEmpleadoDiagnosticoId(data.empleadoDiagnosticoId ?? '');
       setFechaDespacho(data.fechaDespacho?.slice(0, 10) ?? '');
       setFechaLlegadaEst(data.fechaLlegadaEstimada?.slice(0, 10) ?? '');
       setFechaRecibida(data.fechaLlegadaReal?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
@@ -138,7 +159,9 @@ export default function MaquinaDetailPage() {
     try {
       const form = new FormData();
       form.append('descripcionLlegada', recepcionDesc);
-      form.append('empleadoDiagnostico', empleadoDiagnostico);
+      if (empleadoDiagnosticoId) {
+        form.append('empleadoDiagnosticoId', empleadoDiagnosticoId);
+      }
       if (fechaRecibida) form.append('fechaLlegadaReal', fechaRecibida);
       fotosLlegada.forEach((f) => form.append('files', f));
       const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/recepcion`, {
@@ -202,32 +225,67 @@ export default function MaquinaDetailPage() {
     try {
       await apiFetch(`/maquinas/${params.id}/intervenciones`, {
         method: 'POST',
-        body: JSON.stringify({ tipo, area, descripcion, responsable }),
+        body: JSON.stringify({ tipo, area, descripcion, responsableId }),
       });
       setDescripcion('');
-      setResponsable('');
+      setResponsableId('');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al registrar intervención');
     }
   }
 
-  async function avanzarEstado(nuevoEstado: EstadoMaquina) {
+  async function avanzarEstado(nuevoEstadoVal: EstadoMaquina, motivo?: string) {
     setError('');
     try {
       const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/estado`, {
         method: 'PATCH',
-        body: JSON.stringify({ estado: nuevoEstado }),
+        body: JSON.stringify({ estado: nuevoEstadoVal, motivo }),
       });
       setMaquina(updated);
+      setNuevoEstado('');
+      setMotivoEstado('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cambiar estado');
     }
   }
 
+  async function saveEdicion(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          nombre: editNombre,
+          tipo: editTipo,
+          proveedorId: editProveedorId,
+          descripcionLlegada: editDescripcion,
+        }),
+      });
+      setMaquina(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar cambios');
+    }
+  }
+
+  async function aprobarIntervencion(id: string) {
+    await apiFetch(`/intervenciones/${id}/aprobar`, { method: 'PATCH' });
+    await load();
+  }
+
+  async function rechazarIntervencion(id: string) {
+    const obs = prompt('Motivo del rechazo (opcional):');
+    await apiFetch(`/intervenciones/${id}/rechazar`, {
+      method: 'PATCH',
+      body: JSON.stringify({ observaciones: obs || undefined }),
+    });
+    await load();
+  }
+
   if (loading) {
     return (
-      <AuthGuard>
+      <AuthGuard adminOnly>
         <AppShell>
           <p className="text-[#6c757d]">Cargando...</p>
         </AppShell>
@@ -241,7 +299,7 @@ export default function MaquinaDetailPage() {
   const acordada = maquina.descripcionAcordada ?? maquina.descripcionLlegada;
 
   return (
-    <AuthGuard>
+    <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="rounded-xl bg-white border p-6">
@@ -285,6 +343,109 @@ export default function MaquinaDetailPage() {
           </div>
 
           <EstadoPipeline estadoActual={estado} />
+
+          {estado !== EstadoMaquina.VENDIDA && (
+            <div className="rounded-xl bg-white border p-6 space-y-4">
+              <h3 className="font-semibold">Editar datos de la máquina</h3>
+              <form onSubmit={saveEdicion} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  value={editNombre}
+                  onChange={(e) => setEditNombre(e.target.value)}
+                  placeholder="Nombre"
+                  className="rounded-lg border px-3 py-2"
+                  required
+                />
+                <input
+                  value={editTipo}
+                  onChange={(e) => setEditTipo(e.target.value)}
+                  placeholder="Tipo"
+                  className="rounded-lg border px-3 py-2"
+                  required
+                />
+                <select
+                  value={editProveedorId}
+                  onChange={(e) => setEditProveedorId(e.target.value)}
+                  className="rounded-lg border px-3 py-2 md:col-span-2"
+                  required
+                >
+                  {proveedores.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre}
+                    </option>
+                  ))}
+                </select>
+                <textarea
+                  value={editDescripcion}
+                  onChange={(e) => setEditDescripcion(e.target.value)}
+                  placeholder="Descripción de llegada"
+                  rows={2}
+                  className="rounded-lg border px-3 py-2 md:col-span-2"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm w-fit"
+                >
+                  Guardar cambios
+                </button>
+              </form>
+            </div>
+          )}
+
+          {estado !== EstadoMaquina.VENDIDA && (
+            <div className="rounded-xl bg-white border p-6 space-y-3">
+              <h3 className="font-semibold">Cambiar estado (incluye retroceso)</h3>
+              <div className="flex flex-wrap gap-2 items-end">
+                <select
+                  value={nuevoEstado}
+                  onChange={(e) => setNuevoEstado(e.target.value as EstadoMaquina)}
+                  className="rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value="">Seleccionar estado</option>
+                  {Object.values(EstadoMaquina)
+                    .filter((s) => s !== estado)
+                    .map((s) => (
+                      <option key={s} value={s}>
+                        {ESTADO_LABELS[s]}
+                      </option>
+                    ))}
+                </select>
+                <input
+                  value={motivoEstado}
+                  onChange={(e) => setMotivoEstado(e.target.value)}
+                  placeholder="Motivo (opcional)"
+                  className="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[180px]"
+                />
+                <button
+                  type="button"
+                  disabled={!nuevoEstado}
+                  onClick={() => nuevoEstado && avanzarEstado(nuevoEstado, motivoEstado || undefined)}
+                  className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  Aplicar cambio
+                </button>
+              </div>
+            </div>
+          )}
+
+          {maquina.historialEstados && maquina.historialEstados.length > 0 && (
+            <div className="rounded-xl bg-white border p-6">
+              <h3 className="font-semibold mb-4">Historial de estados</h3>
+              <div className="space-y-3">
+                {maquina.historialEstados.map((h) => (
+                  <div key={h.id} className="text-sm border-l-4 border-gray-300 pl-3">
+                    <p className="font-medium">
+                      {h.anterior ? `${ESTADO_LABELS[h.anterior]} → ` : ''}
+                      {ESTADO_LABELS[h.estado]}
+                    </p>
+                    <p className="text-[#6c757d] text-xs">
+                      {new Date(h.createdAt).toLocaleString('es-BO')} — {h.creadoPor.nombre}
+                      {h.motivo ? ` — ${h.motivo}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-red-600 text-sm">{error}</p>}
 
@@ -421,15 +582,21 @@ export default function MaquinaDetailPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">
-                    Asignar diagnóstico a (trabajador) *
+                    Asignar diagnóstico a (empleado) *
                   </label>
-                  <input
-                    value={empleadoDiagnostico}
-                    onChange={(e) => setEmpleadoDiagnostico(e.target.value)}
-                    placeholder="Nombre del mecánico / electricista"
+                  <select
+                    value={empleadoDiagnosticoId}
+                    onChange={(e) => setEmpleadoDiagnosticoId(e.target.value)}
                     className="w-full rounded-lg border px-3 py-2"
                     required
-                  />
+                  >
+                    <option value="">Seleccionar empleado</option>
+                    {empleados.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nombreCompleto} ({e.especialidad.replace(/_/g, ' ')})
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <ImagePicker
                   label="Fotos de llegada (máx. 10)"
@@ -580,13 +747,19 @@ export default function MaquinaDetailPage() {
                     </option>
                   ))}
                 </select>
-                <input
-                  value={responsable}
-                  onChange={(e) => setResponsable(e.target.value)}
-                  placeholder="Responsable (trabajador)"
+                <select
+                  value={responsableId}
+                  onChange={(e) => setResponsableId(e.target.value)}
                   className="w-full rounded-lg border px-3 py-2"
                   required
-                />
+                >
+                  <option value="">Asignar a empleado</option>
+                  {empleados.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nombreCompleto} ({e.especialidad.replace(/_/g, ' ')})
+                    </option>
+                  ))}
+                </select>
                 <textarea
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
@@ -668,8 +841,33 @@ export default function MaquinaDetailPage() {
                     </div>
                     <p className="mt-1">{i.descripcion}</p>
                     <p className="text-sm text-[#6c757d] mt-1">
-                      Responsable: {i.responsable} — Registrado por: {i.registradoPor.nombre}
+                      Responsable: {i.responsableNombre ?? i.responsable?.nombreCompleto ?? '—'} — Registrado por:{' '}
+                      {i.registradoPor.nombre}
+                      {i.estadoIntervencion && (
+                        <> — Estado: {i.estadoIntervencion.replace(/_/g, ' ')}</>
+                      )}
                     </p>
+                    {i.estadoIntervencion === EstadoIntervencion.FINALIZADO && (
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => aprobarIntervencion(i.id)}
+                          className="text-xs bg-green-700 text-white px-3 py-1 rounded-lg"
+                        >
+                          Aprobar finalización
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => rechazarIntervencion(i.id)}
+                          className="text-xs bg-red-600 text-white px-3 py-1 rounded-lg"
+                        >
+                          Rechazar
+                        </button>
+                      </div>
+                    )}
+                    {i.detalleTrabajo && (
+                      <p className="text-sm mt-1 bg-gray-50 p-2 rounded">Detalle: {i.detalleTrabajo}</p>
+                    )}
                   </div>
                 ))}
               </div>

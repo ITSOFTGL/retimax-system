@@ -29,6 +29,7 @@ export class AuthService {
     email: string;
     rol: string;
     activo: boolean;
+    empleadoId?: string | null;
     createdAt: Date;
   }) {
     return {
@@ -37,6 +38,7 @@ export class AuthService {
       email: user.email,
       rol: user.rol,
       activo: user.activo,
+      empleadoId: user.empleadoId ?? null,
       createdAt: user.createdAt.toISOString(),
     };
   }

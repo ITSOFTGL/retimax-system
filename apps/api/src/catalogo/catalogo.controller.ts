@@ -1,8 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Rol } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateClienteDto, CreateProveedorDto, UpdateClienteDto, UpdateProveedorDto } from './dto/catalogo.dto';
 import { CatalogoService } from './catalogo.service';
 
 @Controller()
+@Roles(Rol.ADMIN)
 export class CatalogoController {
   constructor(private readonly catalogoService: CatalogoService) {}
 
