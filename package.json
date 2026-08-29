@@ -9,6 +9,7 @@
     "dev:web:clean": "pnpm --filter @retimax/web clean && pnpm dev:web",
     "start:web": "pnpm --filter @retimax/web start",
     "start:api": "pnpm --filter @retimax/api start",
+    "verify": "pnpm exec turbo run build --filter=@retimax/api --filter=@retimax/web --filter=@retimax/shared-types --force",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
