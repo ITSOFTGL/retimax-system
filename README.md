@@ -35,11 +35,15 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-Si la web falla con errores de caché (`Cannot find module './xxx.js'`):
+Si la web falla con errores de caché (`Cannot find module './xxx.js'` o `reading 'call'`):
 
 ```bash
 pnpm dev:web:clean
 ```
+
+**No es problema de RAM.** Ocurre cuando se mezcla `pnpm build` con `pnpm dev:web` al mismo tiempo. Regla: nunca correr build mientras dev está activo.
+
+Guía completa de deploy: [docs/RAILWAY.md](docs/RAILWAY.md)
 
 **Importante:** usar siempre `http://localhost:3000` (no la IP de red) para evitar problemas de CORS.
 
