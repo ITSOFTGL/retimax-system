@@ -131,4 +131,43 @@ export class ReportesService {
       ),
     };
   }
+
+  async getTrabajos() {
+    const rows = await this.prisma.intervencion.findMany({
+      where: { responsableId: { not: null } },
+      include: {
+        responsable: true,
+        maquina: { select: { id: true, nombre: true, tipo: true, estado: true } },
+        registradoPor: { select: { nombre: true } },
+        aprobadoPor: { select: { nombre: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return rows.map((i) => ({
+      id: i.id,
+      maquinaId: i.maquinaId,
+      maquinaNombre: i.maquina.nombre,
+      maquinaTipo: i.maquina.tipo,
+      maquinaEstado: i.maquina.estado,
+      empleado: i.responsable
+        ? `${i.responsable.nombre} ${i.responsable.apellido}`
+        : i.responsableNombre,
+      especialidad: i.responsable?.especialidad ?? null,
+      area: i.area,
+      tipo: i.tipo,
+      descripcion: i.descripcion,
+      detalleTrabajo: i.detalleTrabajo,
+      observaciones: i.observaciones,
+      estadoIntervencion: i.estadoIntervencion,
+      estadoAprobacion: i.estadoAprobacion,
+      fechaAsignacion: i.fechaAsignacion?.toISOString() ?? null,
+      fechaInicio: i.fechaInicio?.toISOString() ?? null,
+      fechaFinalizacion: i.fechaFinalizacion?.toISOString() ?? null,
+      fechaAprobacion: i.fechaAprobacion?.toISOString() ?? null,
+      registradoPor: i.registradoPor.nombre,
+      aprobadoPor: i.aprobadoPor?.nombre ?? null,
+      createdAt: i.createdAt.toISOString(),
+    }));
+  }
 }

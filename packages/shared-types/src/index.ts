@@ -110,6 +110,7 @@ export interface ProveedorDto {
 export interface ClienteDto {
   id: string;
   nombre: string;
+  nitCi?: string | null;
   telefono?: string | null;
   notas?: string | null;
   createdAt: string;
@@ -178,6 +179,7 @@ export interface MaquinaDto {
   empleadoDiagnostico?: string | null;
   empleadoDiagnosticoId?: string | null;
   empleadoDiag?: { id: string; nombreCompleto: string; especialidad: string } | null;
+  precioCompraUsd?: string | null;
   precioVentaUsd?: string | null;
   tipoCambioUsado?: string | null;
   precioVentaBob?: string | null;
@@ -334,6 +336,30 @@ export interface ReporteResumenDto {
   }>;
 }
 
+export interface ReporteTrabajoDto {
+  id: string;
+  maquinaId: string;
+  maquinaNombre: string;
+  maquinaTipo: string;
+  maquinaEstado: EstadoMaquina;
+  empleado: string;
+  especialidad: string | null;
+  area: AreaIntervencion;
+  tipo: TipoIntervencion;
+  descripcion: string;
+  detalleTrabajo: string | null;
+  observaciones: string | null;
+  estadoIntervencion: EstadoIntervencion | null;
+  estadoAprobacion: string | null;
+  fechaAsignacion: string | null;
+  fechaInicio: string | null;
+  fechaFinalizacion: string | null;
+  fechaAprobacion: string | null;
+  registradoPor: string;
+  aprobadoPor: string | null;
+  createdAt: string;
+}
+
 export interface CreateMaquinaRequest {
   nombre: string;
   tipo: string;
@@ -371,6 +397,7 @@ export interface CreateProveedorRequest {
 
 export interface CreateClienteRequest {
   nombre: string;
+  nitCi?: string;
   telefono?: string;
   notas?: string;
 }

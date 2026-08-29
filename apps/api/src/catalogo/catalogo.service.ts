@@ -40,6 +40,7 @@ export class CatalogoService {
       rows.map((c) => ({
         id: c.id,
         nombre: c.nombre,
+        nitCi: c.nitCi,
         telefono: c.telefono,
         notas: c.notas,
         createdAt: c.createdAt.toISOString(),
@@ -52,6 +53,7 @@ export class CatalogoService {
       .create({
         data: {
           nombre: dto.nombre,
+          nitCi: dto.nitCi,
           telefono: dto.telefono,
           notas: dto.notas,
         },
@@ -59,6 +61,7 @@ export class CatalogoService {
       .then((c) => ({
         id: c.id,
         nombre: c.nombre,
+        nitCi: c.nitCi,
         telefono: c.telefono,
         notas: c.notas,
         createdAt: c.createdAt.toISOString(),
@@ -71,6 +74,7 @@ export class CatalogoService {
       where: { id },
       data: {
         nombre: dto.nombre,
+        nitCi: dto.nitCi,
         telefono: dto.telefono,
         notas: dto.notas,
       },
@@ -78,6 +82,7 @@ export class CatalogoService {
     return {
       id: c.id,
       nombre: c.nombre,
+      nitCi: c.nitCi,
       telefono: c.telefono,
       notas: c.notas,
       createdAt: c.createdAt.toISOString(),

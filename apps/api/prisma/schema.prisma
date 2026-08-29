@@ -137,6 +137,7 @@ model Proveedor {
 model Cliente {
   id        String   @id @default(uuid())
   nombre    String
+  nitCi     String?
   telefono  String?
   notas     String?
   createdAt DateTime @default(now())
@@ -160,6 +161,7 @@ model Maquina {
   empleadoDiagnostico  String?
   empleadoDiagnosticoId String?
   empleadoDiag          Empleado?    @relation("DiagnosticoAsignado", fields: [empleadoDiagnosticoId], references: [id])
+  precioCompraUsd       Decimal?      @db.Decimal(10, 2)
   precioVentaUsd       Decimal?      @db.Decimal(10, 2)
   tipoCambioUsado      Decimal?      @db.Decimal(10, 4)
   precioVentaBob       Decimal?      @db.Decimal(10, 2)

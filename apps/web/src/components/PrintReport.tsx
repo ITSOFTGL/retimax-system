@@ -1,38 +1,32 @@
 'use client';
 
-interface ReciboPrintProps {
+interface PrintReportProps {
   title: string;
-  numero: string;
-  fechaEmision: string;
   children: React.ReactNode;
   onClose: () => void;
 }
 
-export function ReciboPrint({ title, numero, fechaEmision, children, onClose }: ReciboPrintProps) {
+export function PrintReport({ title, children, onClose }: PrintReportProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto p-4 bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-8 no-print-ui">
+      <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full p-8 no-print-ui">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold">{title}</h3>
           <button type="button" onClick={onClose} className="text-sm underline">
             Cerrar
           </button>
         </div>
-        <div className="print-area">
-          <div className="text-center border-b pb-4 mb-4">
+        <div className="print-area space-y-4">
+          <div className="text-center border-b pb-4">
             <h1 className="text-2xl font-bold">
               RETI<span className="text-[#f5c842]">MAX</span>
             </h1>
             <p className="text-sm text-[#6c757d]">{title}</p>
-            <p className="font-mono font-semibold mt-2">{numero}</p>
             <p className="text-xs text-[#6c757d] mt-1">
-              {new Date(fechaEmision).toLocaleString('es-BO')}
+              Generado: {new Date().toLocaleString('es-BO')}
             </p>
           </div>
           {children}
-          <p className="text-xs text-center text-[#6c757d] mt-6">
-            Documento generado por RETIMAX — Gestión de maquinaria
-          </p>
         </div>
         <div className="flex gap-2 mt-6">
           <button

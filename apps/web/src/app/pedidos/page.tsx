@@ -1,12 +1,12 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ClienteDto, MaquinaDto, PedidoDto, ReciboReservaDto } from '@retimax/shared-types';
+import { ClienteDto, EstadoMaquina, MaquinaDto, PedidoDto, ReciboReservaDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
+import { ClienteModal } from '@/components/ClienteModal';
 import { ReciboPrint } from '@/components/ReciboPrint';
 import { apiFetch } from '@/lib/api';
-
 import { formatDecimal } from '@/lib/numbers';
 
 export default function PedidosPage() {
@@ -14,6 +14,8 @@ export default function PedidosPage() {
   const [clientes, setClientes] = useState<ClienteDto[]>([]);
   const [maquinas, setMaquinas] = useState<MaquinaDto[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showClienteModal, setShowClienteModal] = useState(false);
+  const [editPedidoId, setEditPedidoId] = useState<string | null>(null);
   const [clienteId, setClienteId] = useState('');
   const [maquinaId, setMaquinaId] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -27,8 +29,7 @@ export default function PedidosPage() {
     const t = parseFloat(total.replace(',', '.'));
     const a = parseFloat(anticipo.replace(',', '.'));
     if (Number.isNaN(t) || Number.isNaN(a)) return '';
-    const s = Math.max(0, t - a);
-    return s.toFixed(2);
+    return Math.max(0, t - a).toFixed(2);
   })();
 
   async function load() {
@@ -39,12 +40,37 @@ export default function PedidosPage() {
     ]);
     setPedidos(p);
     setClientes(c);
-    setMaquinas(m);
+    setMaquinas(m.filter((x) => x.estado === EstadoMaquina.LISTA_PARA_VENTA));
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  function onMaquinaChange(id: string) {
+    setMaquinaId(id);
+    const m = maquinas.find((x) => x.id === id);
+    if (m?.precioVentaUsd && !total) setTotal(m.precioVentaUsd);
+  }
+
+  function resetForm() {
+    setClienteId('');
+    setMaquinaId('');
+    setDescripcion('');
+    setAnticipo('');
+    setTotal('');
+    setEditPedidoId(null);
+  }
+
+  function startEdit(p: PedidoDto) {
+    setEditPedidoId(p.id);
+    setClienteId(p.clienteId);
+    setMaquinaId(p.maquinaId ?? '');
+    setDescripcion(p.descripcionReferencia ?? '');
+    setAnticipo(p.anticipoUsd);
+    setTotal(p.totalUsd);
+    setShowForm(true);
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -54,9 +80,28 @@ export default function PedidosPage() {
       const anticipoUsd = formatDecimal(anticipo);
       const totalUsd = formatDecimal(total);
       if (!anticipoUsd || !totalUsd) {
-        throw new Error('Anticipo y total deben ser números válidos (ej. 1500 o 1500.50)');
+        throw new Error('Anticipo y total deben ser números válidos');
       }
       const saldoUsd = formatDecimal(saldo) ?? '0';
+
+      if (editPedidoId) {
+        await apiFetch(`/pedidos/${editPedidoId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            clienteId,
+            maquinaId: maquinaId || undefined,
+            descripcionReferencia: descripcion || undefined,
+            anticipoUsd,
+            saldoUsd,
+            totalUsd,
+          }),
+        });
+        setShowForm(false);
+        resetForm();
+        await load();
+        return;
+      }
+
       const pedido = await apiFetch<PedidoDto>('/pedidos', {
         method: 'POST',
         body: JSON.stringify({
@@ -73,11 +118,7 @@ export default function PedidosPage() {
         setRecibo(r);
       }
       setShowForm(false);
-      setClienteId('');
-      setMaquinaId('');
-      setDescripcion('');
-      setAnticipo('');
-      setTotal('');
+      resetForm();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar pedido');
@@ -89,11 +130,14 @@ export default function PedidosPage() {
   return (
     <AuthGuard adminOnly>
       <AppShell>
-        <div className="max-w-5xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Pedidos</h2>
+        <div className="max-w-5xl mx-auto space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">Pedidos / Reservas</h2>
             <button
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                resetForm();
+                setShowForm(!showForm);
+              }}
               className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm"
             >
               + Nuevo pedido
@@ -101,34 +145,40 @@ export default function PedidosPage() {
           </div>
 
           {showForm && (
-            <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 mb-6 space-y-3">
-              {clientes.length === 0 && (
-                <p className="text-amber-700 text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  Primero registra un cliente en la sección Clientes.
-                </p>
-              )}
-              <select
-                value={clienteId}
-                onChange={(e) => setClienteId(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2"
-                required
-              >
-                <option value="">Cliente</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
+            <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 space-y-3">
+              <h3 className="font-semibold">{editPedidoId ? 'Editar reserva' : 'Nueva reserva'}</h3>
+              <div className="flex gap-2 items-end">
+                <select
+                  value={clienteId}
+                  onChange={(e) => setClienteId(e.target.value)}
+                  className="flex-1 rounded-lg border px-3 py-2"
+                  required
+                >
+                  <option value="">Cliente</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowClienteModal(true)}
+                  className="rounded-lg border px-3 py-2 text-sm whitespace-nowrap hover:bg-gray-50"
+                >
+                  + Cliente
+                </button>
+              </div>
               <select
                 value={maquinaId}
-                onChange={(e) => setMaquinaId(e.target.value)}
+                onChange={(e) => onMaquinaChange(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2"
               >
-                <option value="">Máquina (opcional)</option>
+                <option value="">Máquina (solo lista para venta)</option>
                 {maquinas.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.nombre}
+                    {m.precioVentaUsd ? ` — $${m.precioVentaUsd}` : ''}
                   </option>
                 ))}
               </select>
@@ -161,47 +211,73 @@ export default function PedidosPage() {
                 />
               </div>
               {error && <p className="text-red-600 text-sm">{error}</p>}
-              <button
-                type="submit"
-                disabled={loading || clientes.length === 0}
-                className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {loading ? 'Guardando...' : 'Guardar pedido'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {loading ? 'Guardando...' : editPedidoId ? 'Guardar cambios' : 'Guardar pedido'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    resetForm();
+                  }}
+                  className="rounded-lg border px-4 py-2 text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
             </form>
           )}
 
           <div className="space-y-3">
             {pedidos.map((p) => (
               <div key={p.id} className="rounded-xl bg-white border p-4">
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-2">
                   <div>
                     <p className="font-semibold">{p.cliente?.nombre}</p>
                     <p className="text-sm text-[#6c757d]">
                       {p.maquina?.nombre ?? p.descripcionReferencia ?? 'Sin máquina vinculada'}
                     </p>
                   </div>
-                  <span className="text-sm font-medium">{p.estado}</span>
+                  <span className="text-sm font-medium shrink-0">{p.estado}</span>
                 </div>
                 <p className="text-sm mt-2">
                   Total: ${p.totalUsd} — Anticipo: ${p.anticipoUsd} — Saldo: ${p.saldoUsd}
                 </p>
-                {p.reciboReserva && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const r = await apiFetch<ReciboReservaDto>(`/pedidos/${p.id}/recibo`);
-                      setRecibo(r);
-                    }}
-                    className="text-xs underline mt-2"
-                  >
-                    Imprimir recibo {p.reciboReserva.numero}
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {p.reciboReserva && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const r = await apiFetch<ReciboReservaDto>(`/pedidos/${p.id}/recibo`);
+                        setRecibo(r);
+                      }}
+                      className="text-xs underline"
+                    >
+                      Ver / imprimir recibo {p.reciboReserva.numero}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => startEdit(p)} className="text-xs underline text-[#6c757d]">
+                    Editar
                   </button>
-                )}
+                </div>
               </div>
             ))}
           </div>
         </div>
+
+        <ClienteModal
+          open={showClienteModal}
+          onClose={() => setShowClienteModal(false)}
+          onCreated={(c) => {
+            setClientes((prev) => [...prev, c]);
+            setClienteId(c.id);
+          }}
+        />
 
         {recibo && (
           <ReciboPrint
@@ -216,14 +292,7 @@ export default function PedidosPage() {
               </p>
               {recibo.pedido?.maquina && (
                 <p>
-                  <span className="text-[#6c757d]">Máquina:</span> {recibo.pedido.maquina.nombre} (
-                  {recibo.pedido.maquina.tipo})
-                </p>
-              )}
-              {recibo.pedido?.descripcionReferencia && (
-                <p>
-                  <span className="text-[#6c757d]">Referencia:</span>{' '}
-                  {recibo.pedido.descripcionReferencia}
+                  <span className="text-[#6c757d]">Máquina:</span> {recibo.pedido.maquina.nombre}
                 </p>
               )}
               <hr className="my-3" />
@@ -233,7 +302,7 @@ export default function PedidosPage() {
               <p>Anticipo: ${recibo.pedido?.anticipoUsd} USD</p>
               <p>Saldo pendiente: ${recibo.pedido?.saldoUsd} USD</p>
               <p className="text-xs text-[#6c757d] mt-2">
-                Vigencia de reserva: {recibo.vigenciaDias} días
+                Vigencia: {recibo.vigenciaDias} días
               </p>
             </div>
           </ReciboPrint>

@@ -1,0 +1,1 @@
+ALTER TABLE "maquinas" ADD COLUMN IF NOT EXISTS "precioCompraUsd" DECIMAL(10,2);

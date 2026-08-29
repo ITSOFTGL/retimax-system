@@ -5,6 +5,7 @@ import { EstadoIntervencion, IntervencionDto } from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiFetch } from '@/lib/api';
+import { formatDateTime } from '@/lib/dates';
 import { AREA_LABELS, ESTADO_LABELS, TIPO_INTERVENCION_LABELS } from '@/lib/labels';
 
 const ESTADO_INTERVENCION_LABELS: Record<EstadoIntervencion, string> = {
@@ -109,6 +110,20 @@ export default function MisTrabajosPage() {
                     </span>
                   </div>
                   <p className="text-sm">{t.descripcion}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-[#6c757d] bg-gray-50 rounded-lg p-3">
+                    <p>
+                      <span className="font-medium text-[#1a1a1a]">Asignado:</span>{' '}
+                      {formatDateTime(t.fechaAsignacion ?? t.createdAt)}
+                    </p>
+                    <p>
+                      <span className="font-medium text-[#1a1a1a]">Inicio:</span>{' '}
+                      {formatDateTime(t.fechaInicio)}
+                    </p>
+                    <p>
+                      <span className="font-medium text-[#1a1a1a]">Finalización:</span>{' '}
+                      {formatDateTime(t.fechaFinalizacion)}
+                    </p>
+                  </div>
                   {t.detalleTrabajo && (
                     <p className="text-sm bg-gray-50 p-3 rounded-lg">
                       <span className="font-medium">Plan de trabajo:</span> {t.detalleTrabajo}

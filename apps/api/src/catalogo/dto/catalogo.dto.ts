@@ -13,6 +13,10 @@ export class CreateClienteDto {
 
   @IsOptional()
   @IsString()
+  nitCi?: string;
+
+  @IsOptional()
+  @IsString()
   telefono?: string;
 
   @IsOptional()
@@ -30,6 +34,10 @@ export class UpdateClienteDto {
   @IsString()
   @MinLength(1)
   nombre!: string;
+
+  @IsOptional()
+  @IsString()
+  nitCi?: string;
 
   @IsOptional()
   @IsString()

@@ -157,6 +157,7 @@ export class MaquinasService {
         proveedorId: dto.proveedorId,
         descripcionLlegada: dto.descripcionLlegada,
         fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : undefined,
+        precioCompraUsd: dto.precioCompraUsd ? new Prisma.Decimal(dto.precioCompraUsd) : undefined,
         precioVentaUsd: dto.precioVentaUsd ? new Prisma.Decimal(dto.precioVentaUsd) : undefined,
         tipoCambioUsado: dto.tipoCambioUsado ? new Prisma.Decimal(dto.tipoCambioUsado) : undefined,
         precioVentaBob: dto.precioVentaBob ? new Prisma.Decimal(dto.precioVentaBob) : undefined,

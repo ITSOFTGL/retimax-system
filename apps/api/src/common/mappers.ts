@@ -170,6 +170,7 @@ export function toMaquinaDto(maquina: {
   fechaDespacho?: Date | null;
   empleadoDiagnostico?: string | null;
   empleadoDiagnosticoId?: string | null;
+  precioCompraUsd?: Decimal | null;
   precioVentaUsd: Decimal | null;
   tipoCambioUsado: Decimal | null;
   precioVentaBob: Decimal | null;
@@ -257,6 +258,7 @@ export function toMaquinaDto(maquina: {
           especialidad: maquina.empleadoDiag.especialidad,
         }
       : null,
+    precioCompraUsd: decimalToString(maquina.precioCompraUsd),
     precioVentaUsd: decimalToString(maquina.precioVentaUsd),
     tipoCambioUsado: decimalToString(maquina.tipoCambioUsado),
     precioVentaBob: decimalToString(maquina.precioVentaBob),

@@ -4,42 +4,76 @@ Sistema de gestión del ciclo de vida de maquinaria industrial para RETIMAX (Rec
 
 Monorepo Turborepo con:
 - **API** (`apps/api`): NestJS + Prisma + PostgreSQL
-- **Web** (`apps/web`): Next.js + React + TailwindCSS
+- **Web** (`apps/web`): Next.js 15 + React 19 + TailwindCSS
 - **Tipos compartidos** (`packages/shared-types`)
 
 ## Requisitos
 
 - Node.js 20+
 - pnpm 10+
-- Docker y Docker Compose (para entorno completo)
+- PostgreSQL 15+ (local o Docker)
 
-## Inicio rápido con Docker
+## Inicio rápido — desarrollo local
+
+```bash
+pnpm install
+cp .env.example .env
+# Ajustar DATABASE_URL si es necesario
+
+pnpm db:generate
+pnpm db:migrate
+pnpm db:seed
+```
+
+Levantar **dos terminales**:
+
+```bash
+# Terminal 1 — API (puerto 4000)
+pnpm dev:api
+
+# Terminal 2 — Web (puerto 3000)
+pnpm dev:web
+```
+
+Si la web falla con errores de caché (`Cannot find module './xxx.js'`):
+
+```bash
+pnpm dev:web:clean
+```
+
+**Importante:** usar siempre `http://localhost:3000` (no la IP de red) para evitar problemas de CORS.
+
+### Credenciales demo
+
+| Rol | Email | Contraseña |
+|-----|-------|------------|
+| Admin | `admin@retimax.local` | `Admin123!` |
+| Empleado | `alex@retimax.local` | `Empleado123!` |
+
+## Inicio rápido — Docker
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
-Servicios:
 - Frontend: http://localhost:3000
 - API: http://localhost:4000
 - PostgreSQL: localhost:5432
 
-**Credenciales demo:** `admin@retimax.local` / `Admin123!`
+## Módulos
 
-## Desarrollo local (sin Docker)
-
-```bash
-pnpm install
-cp .env.example .env
-
-# PostgreSQL local requerido — ajustar DATABASE_URL en .env
-pnpm db:generate
-pnpm db:migrate
-pnpm db:seed
-
-pnpm dev
-```
+| Módulo | Descripción |
+|--------|-------------|
+| Dashboard | Resumen por estado del pipeline |
+| Máquinas | Registro, fotos, pipeline, mantenimiento, precios |
+| Empleados | Registro con email sugerido y acceso al portal |
+| Mis trabajos | Portal del empleado (asignación, inicio, fin) |
+| Pedidos | Reservas con anticipo y recibo |
+| Ventas | Solo máquinas lista/reservada, recibo imprimible |
+| Clientes | Nombre, NIT/CI, teléfono |
+| Proveedores | Catálogo de proveedores |
+| Reportería | Inventario, ventas, trabajos — imprimible |
 
 ## Estructura
 
@@ -53,20 +87,57 @@ scripts/
   backup.sh     # Backup cifrado de DB + fotos (Docker)
 ```
 
-## Seguridad implementada
+## Seguridad
 
-- JWT access (15 min) + refresh con rotación/revocación
+- JWT access (15 min) + refresh con rotación
 - Rate limiting en `/auth/login`
 - Helmet + CORS restringido
-- Uploads: whitelist mimetype, máx 8 MB, renombrado, WebP + miniatura
-- Backups automáticos diarios (PostgreSQL + volumen de fotos)
+- Uploads: whitelist mimetype, máx 8 MB, WebP + miniatura
+- Contraseñas empleados: mínimo 8 chars, mayús, minús, número y símbolo
 
-## Rama de desarrollo
+## Deploy demo — recomendaciones
 
-Trabajo activo en: `feature/retimax-mvp`
+Para una demo rápida, el orden recomendado es:
 
-## Fases
+1. **Railway** (recomendado para demo)
+   - Despliega API + PostgreSQL + Web en un solo proyecto
+   - Variables de entorno sencillas, HTTPS automático
+   - Plan gratuito limitado pero suficiente para demo
 
-1. **MVP** — auth, máquinas, intervenciones, dashboard ✅
-2. **Comercial** — proveedores, clientes, pedidos, ventas ✅
-3. Pulido UX, reportes, deploy VPS manual
+2. **Render**
+   - Similar a Railway, buena opción gratuita
+   - PostgreSQL managed incluido
+   - El servicio free puede "dormir" tras inactividad (~50 s al despertar)
+
+3. **Fly.io**
+   - Más control, ideal si quieres región cercana (ej. São Paulo)
+   - Requiere más configuración (Dockerfile, `fly.toml`, volúmenes para uploads)
+
+**Sugerencia práctica:** usa **Railway** para la demo inicial. Si necesitas que no duerma, Render con plan pago o Fly.io con máquina siempre activa.
+
+Variables mínimas en producción:
+
+```
+DATABASE_URL=postgresql://...
+JWT_ACCESS_SECRET=...
+JWT_REFRESH_SECRET=...
+CORS_ORIGIN=https://tu-dominio-web.com
+NEXT_PUBLIC_API_URL=https://tu-dominio-api.com
+UPLOAD_DIR=./uploads
+```
+
+## Scripts útiles
+
+```bash
+pnpm dev              # API + Web en paralelo
+pnpm dev:api          # Solo API
+pnpm dev:web          # Solo Web
+pnpm dev:web:clean    # Limpia .next y reinicia Web
+pnpm build            # Build producción
+pnpm db:migrate       # Aplicar migraciones
+pnpm db:seed          # Datos demo
+```
+
+## Rama principal
+
+Desarrollo activo en: **`main`**

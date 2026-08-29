@@ -12,4 +12,9 @@ export class ReportesController {
   getResumen() {
     return this.reportesService.getResumen();
   }
+
+  @Get('trabajos')
+  getTrabajos() {
+    return this.reportesService.getTrabajos();
+  }
 }

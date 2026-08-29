@@ -65,6 +65,11 @@ export class UpdateMaquinaDto {
   @IsOptional()
   @IsString()
   @Matches(/^\d+(\.\d{1,2})?$/)
+  precioCompraUsd?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
   precioVentaUsd?: string;
 
   @IsOptional()

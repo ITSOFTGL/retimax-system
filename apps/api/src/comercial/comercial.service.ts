@@ -13,7 +13,7 @@ import {
 } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
-import { CreatePedidoDto, CreateVentaDto, UpdatePedidoEstadoDto } from './dto/comercial.dto';
+import { CreatePedidoDto, CreateVentaDto, UpdatePedidoDto, UpdatePedidoEstadoDto, UpdateVentaDto } from './dto/comercial.dto';
 
 @Injectable()
 export class ComercialService {
@@ -142,6 +142,32 @@ export class ComercialService {
     return this.toPedidoDto(updated);
   }
 
+  async updatePedido(id: string, dto: UpdatePedidoDto) {
+    const pedido = await this.prisma.pedido.findUnique({ where: { id } });
+    if (!pedido) throw new NotFoundException('Pedido no encontrado');
+
+    const updated = await this.prisma.pedido.update({
+      where: { id },
+      data: {
+        clienteId: dto.clienteId,
+        maquinaId: dto.maquinaId,
+        descripcionReferencia: dto.descripcionReferencia,
+        anticipoUsd: dto.anticipoUsd ? new Prisma.Decimal(dto.anticipoUsd) : undefined,
+        saldoUsd: dto.saldoUsd ? new Prisma.Decimal(dto.saldoUsd) : undefined,
+        totalUsd: dto.totalUsd ? new Prisma.Decimal(dto.totalUsd) : undefined,
+        fechaEntregaEstimada: dto.fechaEntregaEstimada
+          ? new Date(dto.fechaEntregaEstimada)
+          : undefined,
+      },
+      include: {
+        cliente: true,
+        maquina: { include: { proveedor: true } },
+        reciboReserva: true,
+      },
+    });
+    return this.toPedidoDto(updated);
+  }
+
   async listVentas() {
     const ventas = await this.prisma.venta.findMany({
       include: {
@@ -213,6 +239,28 @@ export class ComercialService {
     });
 
     return this.toVentaDto(venta);
+  }
+
+  async updateVenta(id: string, dto: UpdateVentaDto) {
+    const venta = await this.prisma.venta.findUnique({ where: { id } });
+    if (!venta) throw new NotFoundException('Venta no encontrada');
+
+    const updated = await this.prisma.venta.update({
+      where: { id },
+      data: {
+        clienteId: dto.clienteId,
+        precioFinalUsd: dto.precioFinalUsd ? new Prisma.Decimal(dto.precioFinalUsd) : undefined,
+        precioFinalBob: dto.precioFinalBob ? new Prisma.Decimal(dto.precioFinalBob) : undefined,
+        tipoCambio: dto.tipoCambio ? new Prisma.Decimal(dto.tipoCambio) : undefined,
+        fechaEntrega: dto.fechaEntrega ? new Date(dto.fechaEntrega) : undefined,
+      },
+      include: {
+        cliente: true,
+        maquina: { include: { proveedor: true } },
+        reciboVenta: true,
+      },
+    });
+    return this.toVentaDto(updated);
   }
 
   async getReciboVenta(ventaId: string) {

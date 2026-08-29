@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Rol } from '@retimax/shared-types';
 import { getUser, logout } from '@/lib/api';
 
@@ -19,11 +19,18 @@ const adminNav = [
 
 const empleadoNav = [{ href: '/mis-trabajos', label: 'Mis trabajos' }];
 
+type AppUser = { nombre: string; email: string; rol: Rol };
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const user = getUser<{ nombre: string; email: string; rol: Rol }>();
+  const [user, setUser] = useState<AppUser | null>(null);
+
+  useEffect(() => {
+    setUser(getUser<AppUser>());
+  }, []);
+
   const navItems = user?.rol === Rol.EMPLEADO ? empleadoNav : adminNav;
 
   async function handleLogout() {
@@ -66,8 +73,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
-          <p className="text-sm font-medium truncate">{user?.nombre}</p>
-          <p className="text-xs text-[#6c757d] truncate">{user?.email}</p>
+          <p className="text-sm font-medium truncate">{user?.nombre ?? '—'}</p>
+          <p className="text-xs text-[#6c757d] truncate">{user?.email ?? ''}</p>
           <button
             onClick={handleLogout}
             className="mt-3 w-full rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10"

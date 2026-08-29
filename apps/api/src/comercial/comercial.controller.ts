@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { Rol } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ComercialService } from './comercial.service';
-import { CreatePedidoDto, CreateVentaDto, UpdatePedidoEstadoDto } from './dto/comercial.dto';
+import { CreatePedidoDto, CreateVentaDto, UpdatePedidoDto, UpdatePedidoEstadoDto, UpdateVentaDto } from './dto/comercial.dto';
 
 @Controller()
 @Roles(Rol.ADMIN)
@@ -24,6 +24,11 @@ export class ComercialController {
     return this.comercialService.updatePedidoEstado(id, dto);
   }
 
+  @Patch('pedidos/:id')
+  updatePedido(@Param('id') id: string, @Body() dto: UpdatePedidoDto) {
+    return this.comercialService.updatePedido(id, dto);
+  }
+
   @Get('ventas')
   listVentas() {
     return this.comercialService.listVentas();
@@ -32,6 +37,11 @@ export class ComercialController {
   @Post('ventas')
   createVenta(@Body() dto: CreateVentaDto) {
     return this.comercialService.createVenta(dto);
+  }
+
+  @Patch('ventas/:id')
+  updateVenta(@Param('id') id: string, @Body() dto: UpdateVentaDto) {
+    return this.comercialService.updateVenta(id, dto);
   }
 
   @Get('ventas/:id/recibo')

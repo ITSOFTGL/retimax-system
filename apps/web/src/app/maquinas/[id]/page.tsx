@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import {
   AreaIntervencion,
@@ -19,6 +19,7 @@ import { EstadoPipeline } from '@/components/EstadoPipeline';
 import { PhotoGallery } from '@/components/PhotoGallery';
 import { ImagePicker } from '@/components/ImagePicker';
 import { apiFetch } from '@/lib/api';
+import { formatDateTime } from '@/lib/dates';
 import {
   AREA_LABELS,
   ESTADO_COLORS,
@@ -26,48 +27,78 @@ import {
   TIPO_INTERVENCION_LABELS,
 } from '@/lib/labels';
 
+const PIPELINE: EstadoMaquina[] = [
+  EstadoMaquina.COMPRADA_ITALIA,
+  EstadoMaquina.EN_TRANSITO,
+  EstadoMaquina.RECIBIDA,
+  EstadoMaquina.EN_DIAGNOSTICO,
+  EstadoMaquina.EN_MANTENIMIENTO,
+  EstadoMaquina.LISTA_PARA_VENTA,
+  EstadoMaquina.RESERVADA,
+  EstadoMaquina.VENDIDA,
+];
+
+function estadoAnteriorDe(estado: EstadoMaquina): EstadoMaquina | null {
+  const i = PIPELINE.indexOf(estado);
+  return i > 0 ? PIPELINE[i - 1] : null;
+}
+
 export default function MaquinaDetailPage() {
   const params = useParams<{ id: string }>();
   const [maquina, setMaquina] = useState<MaquinaDto | null>(null);
   const [empleados, setEmpleados] = useState<EmpleadoDto[]>([]);
   const [proveedores, setProveedores] = useState<ProveedorDto[]>([]);
-  const [editNombre, setEditNombre] = useState('');
-  const [editTipo, setEditTipo] = useState('');
-  const [editProveedorId, setEditProveedorId] = useState('');
-  const [editDescripcion, setEditDescripcion] = useState('');
-  const [nuevoEstado, setNuevoEstado] = useState<EstadoMaquina | ''>('');
-  const [motivoEstado, setMotivoEstado] = useState('');
-  const [empleadoDiagnosticoId, setEmpleadoDiagnosticoId] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [volverAtras, setVolverAtras] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [editNombre, setEditNombre] = useState('');
+  const [editTipo, setEditTipo] = useState('');
+  const [editProveedorId, setEditProveedorId] = useState('');
+  const [editDescripcion, setEditDescripcion] = useState('');
+
   const [fechaDespacho, setFechaDespacho] = useState('');
   const [fechaLlegadaEst, setFechaLlegadaEst] = useState('');
   const [fechaRecibida, setFechaRecibida] = useState('');
-
   const [recepcionDesc, setRecepcionDesc] = useState('');
+  const [empleadoDiagnosticoId, setEmpleadoDiagnosticoId] = useState('');
   const [fotosLlegada, setFotosLlegada] = useState<File[]>([]);
 
   const [diagMecanica, setDiagMecanica] = useState('');
   const [diagElectrica, setDiagElectrica] = useState('');
   const [diagPintado, setDiagPintado] = useState('');
   const [diagMantenimiento, setDiagMantenimiento] = useState('');
-  const [responsableDiag, setResponsableDiag] = useState('');
   const [requiereMantenimiento, setRequiereMantenimiento] = useState(true);
 
-  const [precioUsd, setPrecioUsd] = useState('');
-  const [tipoCambio, setTipoCambio] = useState('');
-  const [precioBob, setPrecioBob] = useState('');
+  const [precioCompraUsd, setPrecioCompraUsd] = useState('');
+  const [precioVentaUsd, setPrecioVentaUsd] = useState('');
 
-  const [tipo, setTipo] = useState<TipoIntervencion>(TipoIntervencion.TRABAJO_REALIZADO);
-  const [area, setArea] = useState<AreaIntervencion>(AreaIntervencion.MECANICA);
-  const [descripcion, setDescripcion] = useState('');
-  const [responsableId, setResponsableId] = useState('');
+  const [areaAsignar, setAreaAsignar] = useState<AreaIntervencion>(AreaIntervencion.MECANICA);
+  const [descAsignar, setDescAsignar] = useState('');
+  const [empleadoAsignarId, setEmpleadoAsignarId] = useState('');
+
+  function syncForm(data: MaquinaDto) {
+    setEditNombre(data.nombre);
+    setEditTipo(data.tipo);
+    setEditProveedorId(data.proveedorId);
+    setEditDescripcion(data.descripcionAcordada ?? data.descripcionLlegada ?? '');
+    setRecepcionDesc(data.descripcionLlegada ?? '');
+    setEmpleadoDiagnosticoId(data.empleadoDiagnosticoId ?? '');
+    setFechaDespacho(data.fechaDespacho?.slice(0, 10) ?? '');
+    setFechaLlegadaEst(data.fechaLlegadaEstimada?.slice(0, 10) ?? '');
+    setFechaRecibida(
+      data.fechaLlegadaReal?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+    );
+    setPrecioCompraUsd(data.precioCompraUsd ?? '');
+    setPrecioVentaUsd(data.precioVentaUsd ?? '');
+  }
 
   async function load() {
     setLoading(true);
+    setError('');
     try {
       const [data, emps, provs] = await Promise.all([
         apiFetch<MaquinaDto>(`/maquinas/${params.id}`),
@@ -75,21 +106,11 @@ export default function MaquinaDetailPage() {
         apiFetch<ProveedorDto[]>('/proveedores'),
       ]);
       setMaquina(data);
-      setEmpleados(emps);
+      setEmpleados(emps.filter((e) => e.activo));
       setProveedores(provs);
-      setEditNombre(data.nombre);
-      setEditTipo(data.tipo);
-      setEditProveedorId(data.proveedorId);
-      setEditDescripcion(data.descripcionLlegada ?? '');
-      setRecepcionDesc(data.descripcionLlegada ?? '');
-      setEmpleadoDiagnosticoId(data.empleadoDiagnosticoId ?? '');
-      setFechaDespacho(data.fechaDespacho?.slice(0, 10) ?? '');
-      setFechaLlegadaEst(data.fechaLlegadaEstimada?.slice(0, 10) ?? '');
-      setFechaRecibida(data.fechaLlegadaReal?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
-      setPrecioUsd(data.precioVentaUsd ?? '');
-      setTipoCambio(data.tipoCambioUsado ?? '');
-      setPrecioBob(data.precioVentaBob ?? '');
-      if (data.empleadoDiagnostico) setResponsableDiag(data.empleadoDiagnostico);
+      syncForm(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cargar máquina');
     } finally {
       setLoading(false);
     }
@@ -98,6 +119,27 @@ export default function MaquinaDetailPage() {
   useEffect(() => {
     load();
   }, [params.id]);
+
+  const estado = maquina?.estado;
+  const acordada = maquina?.descripcionAcordada ?? maquina?.descripcionLlegada;
+  const estadoPrevio = estado ? estadoAnteriorDe(estado) : null;
+
+  const intervencionesMantenimiento = useMemo(
+    () =>
+      maquina?.intervenciones?.filter(
+        (i) =>
+          i.tipo === TipoIntervencion.TRABAJO_REALIZADO ||
+          (i.tipo === TipoIntervencion.OBSERVACION_ADICIONAL && i.responsableId),
+      ) ?? [],
+    [maquina?.intervenciones],
+  );
+
+  const hayPendientesAprobacion = intervencionesMantenimiento.some(
+    (i) => i.estadoIntervencion === EstadoIntervencion.FINALIZADO,
+  );
+  const hayTrabajoAprobado = intervencionesMantenimiento.some(
+    (i) => i.estadoIntervencion === EstadoIntervencion.APROBADO,
+  );
 
   async function uploadPhotos(etapa: EtapaImagen, files: File[]) {
     setUploading(true);
@@ -110,7 +152,6 @@ export default function MaquinaDetailPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al subir fotos');
-      throw err;
     } finally {
       setUploading(false);
     }
@@ -121,14 +162,15 @@ export default function MaquinaDetailPage() {
     setActionLoading(true);
     setError('');
     try {
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/transito`, {
+      await apiFetch(`/maquinas/${params.id}/transito`, {
         method: 'POST',
         body: JSON.stringify({
           fechaDespacho,
           fechaLlegadaEstimada: fechaLlegadaEst || undefined,
         }),
       });
-      setMaquina(updated);
+      setVolverAtras(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al registrar tránsito');
     } finally {
@@ -140,11 +182,12 @@ export default function MaquinaDetailPage() {
     setActionLoading(true);
     setError('');
     try {
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/recibida`, {
+      await apiFetch(`/maquinas/${params.id}/recibida`, {
         method: 'POST',
         body: JSON.stringify({ fechaLlegadaReal: fechaRecibida || undefined }),
       });
-      setMaquina(updated);
+      setVolverAtras(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al marcar recibida');
     } finally {
@@ -159,17 +202,13 @@ export default function MaquinaDetailPage() {
     try {
       const form = new FormData();
       form.append('descripcionLlegada', recepcionDesc);
-      if (empleadoDiagnosticoId) {
-        form.append('empleadoDiagnosticoId', empleadoDiagnosticoId);
-      }
+      form.append('empleadoDiagnosticoId', empleadoDiagnosticoId);
       if (fechaRecibida) form.append('fechaLlegadaReal', fechaRecibida);
       fotosLlegada.forEach((f) => form.append('files', f));
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/recepcion`, {
-        method: 'POST',
-        body: form,
-      });
-      setMaquina(updated);
+      await apiFetch(`/maquinas/${params.id}/recepcion`, { method: 'POST', body: form });
       setFotosLlegada([]);
+      setVolverAtras(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar recepción');
     } finally {
@@ -182,10 +221,11 @@ export default function MaquinaDetailPage() {
     setActionLoading(true);
     setError('');
     try {
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/diagnostico/completar`, {
+      await apiFetch(`/maquinas/${params.id}/diagnostico/completar`, {
         method: 'POST',
         body: JSON.stringify({
-          responsable: responsableDiag,
+          responsableId:
+            (maquina?.empleadoDiagnosticoId ?? empleadoDiagnosticoId) || undefined,
           mecanica: diagMecanica || undefined,
           electrica: diagElectrica || undefined,
           pintado: diagPintado || undefined,
@@ -193,7 +233,8 @@ export default function MaquinaDetailPage() {
           requiereMantenimiento,
         }),
       });
-      setMaquina(updated);
+      setVolverAtras(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al completar diagnóstico');
     } finally {
@@ -205,56 +246,67 @@ export default function MaquinaDetailPage() {
     e.preventDefault();
     setError('');
     try {
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`, {
+      await apiFetch(`/maquinas/${params.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          precioVentaUsd: precioUsd,
-          tipoCambioUsado: tipoCambio,
-          precioVentaBob: precioBob,
+          precioCompraUsd: precioCompraUsd || undefined,
+          precioVentaUsd: precioVentaUsd || undefined,
         }),
       });
-      setMaquina(updated);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar precio');
     }
   }
 
-  async function submitIntervencion(e: FormEvent) {
+  async function asignarTrabajo(e: FormEvent) {
     e.preventDefault();
     setError('');
     try {
       await apiFetch(`/maquinas/${params.id}/intervenciones`, {
         method: 'POST',
-        body: JSON.stringify({ tipo, area, descripcion, responsableId }),
+        body: JSON.stringify({
+          tipo: TipoIntervencion.TRABAJO_REALIZADO,
+          area: areaAsignar,
+          descripcion: descAsignar,
+          responsableId: empleadoAsignarId,
+        }),
       });
-      setDescripcion('');
-      setResponsableId('');
+      setDescAsignar('');
+      setEmpleadoAsignarId('');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al registrar intervención');
+      setError(err instanceof Error ? err.message : 'Error al asignar trabajo');
     }
   }
 
-  async function avanzarEstado(nuevoEstadoVal: EstadoMaquina, motivo?: string) {
+  async function cambiarEstado(nuevoEstado: EstadoMaquina, motivo?: string) {
+    setActionLoading(true);
     setError('');
     try {
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}/estado`, {
+      await apiFetch(`/maquinas/${params.id}/estado`, {
         method: 'PATCH',
-        body: JSON.stringify({ estado: nuevoEstadoVal, motivo }),
+        body: JSON.stringify({ estado: nuevoEstado, motivo }),
       });
-      setMaquina(updated);
-      setNuevoEstado('');
-      setMotivoEstado('');
+      setVolverAtras(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cambiar estado');
+    } finally {
+      setActionLoading(false);
     }
+  }
+
+  async function handleVolverAtras() {
+    if (!estadoPrevio) return;
+    await cambiarEstado(estadoPrevio, 'Retroceso al estado anterior');
   }
 
   async function saveEdicion(e: FormEvent) {
     e.preventDefault();
     setError('');
     try {
-      const updated = await apiFetch<MaquinaDto>(`/maquinas/${params.id}`, {
+      await apiFetch(`/maquinas/${params.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
           nombre: editNombre,
@@ -263,7 +315,8 @@ export default function MaquinaDetailPage() {
           descripcionLlegada: editDescripcion,
         }),
       });
-      setMaquina(updated);
+      setEditing(false);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar cambios');
     }
@@ -293,61 +346,45 @@ export default function MaquinaDetailPage() {
     );
   }
 
-  if (!maquina) return null;
-
-  const estado = maquina.estado;
-  const acordada = maquina.descripcionAcordada ?? maquina.descripcionLlegada;
+  if (!maquina || !estado) return null;
 
   return (
     <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-5xl mx-auto space-y-6">
-          <div className="rounded-xl bg-white border p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+          {error && (
+            <p className="text-red-600 text-sm bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+              {error}
+            </p>
+          )}
+
+          {/* CUADRO 1 — Datos principales + fotos + despacho (Italia) */}
+          <div className="rounded-xl bg-white border p-6 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-bold">{maquina.nombre}</h2>
                 <p className="text-[#6c757d]">{maquina.tipo}</p>
               </div>
-              <span
-                className={`text-sm text-white px-3 py-1 rounded-full ${ESTADO_COLORS[maquina.estado]}`}
-              >
-                {ESTADO_LABELS[maquina.estado]}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`text-sm text-white px-3 py-1 rounded-full ${ESTADO_COLORS[estado]}`}
+                >
+                  {ESTADO_LABELS[estado]}
+                </span>
+                {estado !== EstadoMaquina.VENDIDA && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(!editing)}
+                    className="text-sm rounded-lg border px-3 py-1 hover:bg-gray-50"
+                  >
+                    {editing ? 'Cancelar' : 'Editar'}
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <p>
-                <span className="text-[#6c757d]">Proveedor:</span> {maquina.proveedor?.nombre}
-              </p>
-              <p>
-                <span className="text-[#6c757d]">Registrada por:</span> {maquina.creadoPor?.nombre}
-              </p>
-              {maquina.fechaDespacho && (
-                <p>
-                  <span className="text-[#6c757d]">Despacho:</span>{' '}
-                  {new Date(maquina.fechaDespacho).toLocaleDateString('es-BO')}
-                </p>
-              )}
-              {maquina.fechaLlegadaReal && (
-                <p>
-                  <span className="text-[#6c757d]">Llegada:</span>{' '}
-                  {new Date(maquina.fechaLlegadaReal).toLocaleDateString('es-BO')}
-                </p>
-              )}
-              {maquina.empleadoDiagnostico && (
-                <p>
-                  <span className="text-[#6c757d]">Diagnóstico asignado a:</span>{' '}
-                  {maquina.empleadoDiagnostico}
-                </p>
-              )}
-            </div>
-          </div>
 
-          <EstadoPipeline estadoActual={estado} />
-
-          {estado !== EstadoMaquina.VENDIDA && (
-            <div className="rounded-xl bg-white border p-6 space-y-4">
-              <h3 className="font-semibold">Editar datos de la máquina</h3>
-              <form onSubmit={saveEdicion} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {editing ? (
+              <form onSubmit={saveEdicion} className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-4">
                 <input
                   value={editNombre}
                   onChange={(e) => setEditNombre(e.target.value)}
@@ -377,8 +414,8 @@ export default function MaquinaDetailPage() {
                 <textarea
                   value={editDescripcion}
                   onChange={(e) => setEditDescripcion(e.target.value)}
-                  placeholder="Descripción de llegada"
-                  rows={2}
+                  placeholder="Descripción acordada / qué debería traer"
+                  rows={3}
                   className="rounded-lg border px-3 py-2 md:col-span-2"
                 />
                 <button
@@ -388,215 +425,183 @@ export default function MaquinaDetailPage() {
                   Guardar cambios
                 </button>
               </form>
-            </div>
-          )}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <p>
+                  <span className="text-[#6c757d]">Proveedor:</span> {maquina.proveedor?.nombre}
+                </p>
+                <p>
+                  <span className="text-[#6c757d]">Registrada por:</span> {maquina.creadoPor?.nombre}
+                </p>
+                {acordada && (
+                  <p className="md:col-span-2 whitespace-pre-wrap">
+                    <span className="text-[#6c757d]">Descripción:</span> {acordada}
+                  </p>
+                )}
+                {maquina.fechaDespacho && (
+                  <p>
+                    <span className="text-[#6c757d]">Despacho:</span>{' '}
+                    {new Date(maquina.fechaDespacho).toLocaleDateString('es-BO')}
+                  </p>
+                )}
+                {maquina.fechaLlegadaReal && (
+                  <p>
+                    <span className="text-[#6c757d]">Llegada:</span>{' '}
+                    {new Date(maquina.fechaLlegadaReal).toLocaleDateString('es-BO')}
+                  </p>
+                )}
+                {maquina.empleadoDiagnostico && (
+                  <p>
+                    <span className="text-[#6c757d]">Diagnóstico:</span> {maquina.empleadoDiagnostico}
+                  </p>
+                )}
+              </div>
+            )}
 
-          {estado !== EstadoMaquina.VENDIDA && (
-            <div className="rounded-xl bg-white border p-6 space-y-3">
-              <h3 className="font-semibold">Cambiar estado (incluye retroceso)</h3>
-              <div className="flex flex-wrap gap-2 items-end">
-                <select
-                  value={nuevoEstado}
-                  onChange={(e) => setNuevoEstado(e.target.value as EstadoMaquina)}
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  <option value="">Seleccionar estado</option>
-                  {Object.values(EstadoMaquina)
-                    .filter((s) => s !== estado)
-                    .map((s) => (
-                      <option key={s} value={s}>
-                        {ESTADO_LABELS[s]}
-                      </option>
-                    ))}
-                </select>
-                <input
-                  value={motivoEstado}
-                  onChange={(e) => setMotivoEstado(e.target.value)}
-                  placeholder="Motivo (opcional)"
-                  className="rounded-lg border px-3 py-2 text-sm flex-1 min-w-[180px]"
+            <PhotoGallery imagenes={maquina.imagenes ?? []} title="Fotos de la máquina" />
+
+            {estado === EstadoMaquina.COMPRADA_ITALIA && (
+              <>
+                <AudioNoteRecorder
+                  maquinaId={maquina.id}
+                  audioUrl={maquina.notaAudioUrl}
+                  onUploaded={() => load()}
                 />
-                <button
-                  type="button"
-                  disabled={!nuevoEstado}
-                  onClick={() => nuevoEstado && avanzarEstado(nuevoEstado, motivoEstado || undefined)}
-                  className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
+                <ImagePicker
+                  label="Agregar fotos de embarque"
+                  disabled={uploading}
+                  onUpload={(files) => uploadPhotos(EtapaImagen.EMBARQUE, files)}
+                  uploading={uploading}
+                />
+                <form
+                  onSubmit={handleTransito}
+                  className="rounded-lg bg-amber-50 border border-amber-200 p-4 space-y-3"
                 >
-                  Aplicar cambio
-                </button>
-              </div>
-            </div>
-          )}
-
-          {maquina.historialEstados && maquina.historialEstados.length > 0 && (
-            <div className="rounded-xl bg-white border p-6">
-              <h3 className="font-semibold mb-4">Historial de estados</h3>
-              <div className="space-y-3">
-                {maquina.historialEstados.map((h) => (
-                  <div key={h.id} className="text-sm border-l-4 border-gray-300 pl-3">
-                    <p className="font-medium">
-                      {h.anterior ? `${ESTADO_LABELS[h.anterior]} → ` : ''}
-                      {ESTADO_LABELS[h.estado]}
-                    </p>
-                    <p className="text-[#6c757d] text-xs">
-                      {new Date(h.createdAt).toLocaleString('es-BO')} — {h.creadoPor.nombre}
-                      {h.motivo ? ` — ${h.motivo}` : ''}
-                    </p>
+                  <p className="text-sm font-medium">Confirmar despacho → En tránsito</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm mb-1">Fecha de salida / despacho *</label>
+                      <input
+                        type="date"
+                        value={fechaDespacho}
+                        onChange={(e) => setFechaDespacho(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm mb-1">Llegada estimada (opcional)</label>
+                      <input
+                        type="date"
+                        value={fechaLlegadaEst}
+                        onChange={(e) => setFechaLlegadaEst(e.target.value)}
+                        className="w-full rounded-lg border px-3 py-2"
+                      />
+                    </div>
                   </div>
-                ))}
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Guardando...' : 'Confirmar despacho — pasar a En tránsito'}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+
+          {/* CUADRO 2 — Estado + acción del paso actual */}
+          <div className="rounded-xl bg-white border p-5 space-y-4">
+            <EstadoPipeline estadoActual={estado} />
+
+            {estadoPrevio && estado !== EstadoMaquina.VENDIDA && (
+              <div className="rounded-lg border border-dashed border-gray-300 p-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={volverAtras}
+                    onChange={(e) => setVolverAtras(e.target.checked)}
+                  />
+                  Deseo volver al estado anterior ({ESTADO_LABELS[estadoPrevio]})
+                </label>
+                {volverAtras && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleVolverAtras}
+                    className="rounded-lg border border-amber-400 bg-amber-50 text-amber-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                  >
+                    Confirmar retroceso a {ESTADO_LABELS[estadoPrevio]}
+                  </button>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-
-          {estado === EstadoMaquina.COMPRADA_ITALIA && (
-            <div className="rounded-xl bg-white border p-6 space-y-4">
-              <h3 className="font-semibold text-lg">Compra en Italia — registro inicial</h3>
-              {acordada && (
-                <div>
-                  <p className="text-sm font-medium text-[#6c757d] mb-1">Qué debería traer (acordado)</p>
-                  <p className="text-sm whitespace-pre-wrap">{acordada}</p>
-                </div>
-              )}
-              <AudioNoteRecorder
-                maquinaId={maquina.id}
-                audioUrl={maquina.notaAudioUrl}
-                onUploaded={() => load()}
-              />
-              <PhotoGallery
-                imagenes={maquina.imagenes ?? []}
-                title="Galería de fotos"
-              />
-              <ImagePicker
-                label="Agregar fotos de embarque"
-                disabled={uploading}
-                onUpload={(files) => uploadPhotos(EtapaImagen.EMBARQUE, files)}
-                uploading={uploading}
-              />
-              <form onSubmit={handleTransito} className="rounded-lg bg-amber-50 border border-amber-200 p-4 space-y-3">
-                <p className="text-sm font-medium">Álvaro: confirmar despacho → En tránsito</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {estado === EstadoMaquina.EN_TRANSITO && (
+              <div className="space-y-3 border-t pt-4">
+                <p className="text-sm text-[#6c757d]">
+                  La máquina va en camino. Cuando llegue al taller, marca como recibida.
+                </p>
+                {maquina.fechaDespacho && (
+                  <p className="text-sm">
+                    Despachada el {new Date(maquina.fechaDespacho).toLocaleDateString('es-BO')}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-end gap-3">
                   <div>
-                    <label className="block text-sm mb-1">Fecha de salida / despacho *</label>
+                    <label className="block text-sm mb-1">Fecha de llegada al taller</label>
                     <input
                       type="date"
-                      value={fechaDespacho}
-                      onChange={(e) => setFechaDespacho(e.target.value)}
+                      value={fechaRecibida}
+                      onChange={(e) => setFechaRecibida(e.target.value)}
+                      className="rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleConfirmarRecibida}
+                    className="rounded-lg bg-cyan-700 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {actionLoading ? '...' : 'Marcar recibida en taller'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {estado === EstadoMaquina.RECIBIDA && (
+              <form onSubmit={handleRecepcion} className="space-y-4 border-t pt-4">
+                <p className="text-sm font-medium">Cesia verifica cómo llegó la máquina</p>
+                <textarea
+                  value={recepcionDesc}
+                  onChange={(e) => setRecepcionDesc(e.target.value)}
+                  rows={3}
+                  placeholder="Ej: Llegó con plato, sin garras. Bomba dañada..."
+                  className="w-full rounded-lg border px-3 py-2"
+                  required
+                />
+                <div>
+                  <label className="block text-sm font-medium mb-1">Asignar diagnóstico a *</label>
+                  {empleados.length === 0 ? (
+                    <p className="text-amber-700 text-sm">
+                      No hay empleados registrados. Créalos en el módulo Empleados.
+                    </p>
+                  ) : (
+                    <select
+                      value={empleadoDiagnosticoId}
+                      onChange={(e) => setEmpleadoDiagnosticoId(e.target.value)}
                       className="w-full rounded-lg border px-3 py-2"
                       required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm mb-1">Llegada estimada (opcional)</label>
-                    <input
-                      type="date"
-                      value={fechaLlegadaEst}
-                      onChange={(e) => setFechaLlegadaEst(e.target.value)}
-                      className="w-full rounded-lg border px-3 py-2"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  {actionLoading ? 'Guardando...' : 'Confirmar despacho — pasar a En tránsito'}
-                </button>
-              </form>
-            </div>
-          )}
-
-          {estado === EstadoMaquina.EN_TRANSITO && (
-            <div className="rounded-xl bg-white border p-6 space-y-4">
-              <h3 className="font-semibold text-lg">En tránsito</h3>
-              <p className="text-sm text-[#6c757d]">
-                La máquina va en camino. Cuando llegue al taller, marca como recibida para que Cesia
-                verifique contra lo acordado.
-              </p>
-              {acordada && (
-                <div className="rounded-lg bg-gray-50 p-3 text-sm">
-                  <p className="font-medium mb-1">Lo acordado en Italia:</p>
-                  <p className="whitespace-pre-wrap">{acordada}</p>
-                </div>
-              )}
-              {maquina.fechaDespacho && (
-                <p className="text-sm">
-                  Despachada el {new Date(maquina.fechaDespacho).toLocaleDateString('es-BO')}
-                </p>
-              )}
-              <PhotoGallery
-                imagenes={maquina.imagenes ?? []}
-                title="Galería de fotos"
-              />
-              <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="block text-sm mb-1">Fecha de llegada al taller</label>
-                  <input
-                    type="date"
-                    value={fechaRecibida}
-                    onChange={(e) => setFechaRecibida(e.target.value)}
-                    className="rounded-lg border px-3 py-2"
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleConfirmarRecibida}
-                  className="rounded-lg bg-cyan-700 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  {actionLoading ? '...' : '✓ Marcar recibida en taller'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {estado === EstadoMaquina.RECIBIDA && (
-            <div className="rounded-xl bg-cyan-50 border-2 border-cyan-300 p-6 space-y-4">
-              <h3 className="font-semibold text-lg">Recepción — Cesia verifica cómo llegó</h3>
-              {acordada && (
-                <div className="rounded-lg bg-white p-3 text-sm border">
-                  <p className="font-medium mb-1">Lo que debería traer (Italia):</p>
-                  <p className="whitespace-pre-wrap">{acordada}</p>
-                </div>
-              )}
-              <PhotoGallery
-                imagenes={maquina.imagenes ?? []}
-                etapa={EtapaImagen.EMBARQUE}
-                title="Fotos de embarque (Italia) — registradas por Álvaro"
-                emptyText="Sin fotos de embarque registradas"
-              />
-              <form onSubmit={handleRecepcion} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Cómo llegó realmente (breve descripción)
-                  </label>
-                  <textarea
-                    value={recepcionDesc}
-                    onChange={(e) => setRecepcionDesc(e.target.value)}
-                    rows={3}
-                    placeholder="Ej: Llegó con plato, sin garras. Bomba de agua dañada..."
-                    className="w-full rounded-lg border px-3 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Asignar diagnóstico a (empleado) *
-                  </label>
-                  <select
-                    value={empleadoDiagnosticoId}
-                    onChange={(e) => setEmpleadoDiagnosticoId(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                    required
-                  >
-                    <option value="">Seleccionar empleado</option>
-                    {empleados.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.nombreCompleto} ({e.especialidad.replace(/_/g, ' ')})
-                      </option>
-                    ))}
-                  </select>
+                    >
+                      <option value="">Seleccionar empleado</option>
+                      {empleados.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nombreCompleto} — {e.especialidad.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <ImagePicker
                   label="Fotos de llegada (máx. 10)"
@@ -606,86 +611,39 @@ export default function MaquinaDetailPage() {
                 />
                 <button
                   type="submit"
-                  disabled={actionLoading}
+                  disabled={actionLoading || empleados.length === 0}
                   className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
                 >
-                  {actionLoading
-                    ? 'Guardando...'
-                    : 'Confirmar recepción → pasar a Diagnóstico automáticamente'}
+                  {actionLoading ? 'Guardando...' : 'Confirmar recepción → Diagnóstico'}
                 </button>
               </form>
-            </div>
-          )}
+            )}
 
-          {estado === EstadoMaquina.EN_DIAGNOSTICO && (
-            <div className="rounded-xl bg-blue-50 border border-blue-200 p-6 space-y-4">
-              <h3 className="font-semibold text-lg">Diagnóstico inicial</h3>
-              <p className="text-sm text-[#6c757d]">
-                El trabajador asignado ({maquina.empleadoDiagnostico ?? 'sin asignar'}) completa el
-                informe. Si falta algo o hay trabajo → mantenimiento; si todo está bien → lista para
-                venta.
-              </p>
-              {maquina.descripcionLlegada && (
-                <div className="rounded-lg bg-white p-3 text-sm border">
-                  <p className="font-medium mb-1">Notas de recepción:</p>
-                  <p>{maquina.descripcionLlegada}</p>
-                </div>
-              )}
-              <PhotoGallery
-                imagenes={maquina.imagenes ?? []}
-                title="Galería de fotos"
-              />
-              <form onSubmit={handleCompletarDiagnostico} className="space-y-4">
+            {estado === EstadoMaquina.EN_DIAGNOSTICO && (
+              <form onSubmit={handleCompletarDiagnostico} className="space-y-4 border-t pt-4">
+                <p className="text-sm text-[#6c757d]">
+                  Diagnóstico por área — asignado a{' '}
+                  <strong>{maquina.empleadoDiagnostico ?? 'sin asignar'}</strong>
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Mecánica</label>
-                    <textarea
-                      value={diagMecanica}
-                      onChange={(e) => setDiagMecanica(e.target.value)}
-                      rows={3}
-                      placeholder="Rodamientos, eje, lubricación..."
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Eléctrica</label>
-                    <textarea
-                      value={diagElectrica}
-                      onChange={(e) => setDiagElectrica(e.target.value)}
-                      rows={3}
-                      placeholder="Motor, cableado, tablero..."
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Pintado</label>
-                    <textarea
-                      value={diagPintado}
-                      onChange={(e) => setDiagPintado(e.target.value)}
-                      rows={3}
-                      placeholder="Pintura, chapería..."
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Mantenimiento / piezas</label>
-                    <textarea
-                      value={diagMantenimiento}
-                      onChange={(e) => setDiagMantenimiento(e.target.value)}
-                      rows={3}
-                      placeholder="Piezas faltantes, fabricación..."
-                      className="w-full rounded-lg border px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Responsable del diagnóstico *</label>
-                  <input
-                    value={responsableDiag}
-                    onChange={(e) => setResponsableDiag(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2"
-                    required
-                  />
+                  {(
+                    [
+                      ['Mecánica', diagMecanica, setDiagMecanica],
+                      ['Eléctrica', diagElectrica, setDiagElectrica],
+                      ['Pintado', diagPintado, setDiagPintado],
+                      ['Mantenimiento', diagMantenimiento, setDiagMantenimiento],
+                    ] as const
+                  ).map(([label, val, setVal]) => (
+                    <div key={label}>
+                      <label className="block text-sm font-medium mb-1">{label}</label>
+                      <textarea
+                        value={val}
+                        onChange={(e) => setVal(e.target.value)}
+                        rows={2}
+                        className="w-full rounded-lg border px-3 py-2 text-sm"
+                      />
+                    </div>
+                  ))}
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -693,7 +651,7 @@ export default function MaquinaDetailPage() {
                     checked={requiereMantenimiento}
                     onChange={(e) => setRequiereMantenimiento(e.target.checked)}
                   />
-                  Requiere mantenimiento / reparación antes de vender
+                  Requiere mantenimiento antes de vender
                 </label>
                 <button
                   type="submit"
@@ -703,176 +661,228 @@ export default function MaquinaDetailPage() {
                   {actionLoading
                     ? 'Guardando...'
                     : requiereMantenimiento
-                      ? 'Completar → pasar a Mantenimiento'
-                      : 'Completar → pasar a Lista para venta'}
+                      ? 'Completar → Mantenimiento'
+                      : 'Completar → Lista para venta'}
                 </button>
               </form>
-            </div>
-          )}
+            )}
 
-          {estado === EstadoMaquina.EN_MANTENIMIENTO && (
-            <div className="rounded-xl bg-white border p-6 space-y-4">
-              <h3 className="font-semibold text-lg">Mantenimiento en curso</h3>
-              <PhotoGallery
-                imagenes={maquina.imagenes ?? []}
-                title="Galería de fotos"
-              />
-              <ImagePicker
-                label="Fotos del trabajo"
-                disabled={uploading}
-                onUpload={(files) => uploadPhotos(EtapaImagen.OTRA, files)}
-                uploading={uploading}
-              />
-              <form onSubmit={submitIntervencion} className="space-y-3 border-t pt-4">
-                <p className="text-sm text-[#6c757d]">Registrar trabajo realizado (auditoría inmutable)</p>
-                <select
-                  value={tipo}
-                  onChange={(e) => setTipo(e.target.value as TipoIntervencion)}
-                  className="w-full rounded-lg border px-3 py-2"
-                >
-                  {Object.entries(TIPO_INTERVENCION_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={area}
-                  onChange={(e) => setArea(e.target.value as AreaIntervencion)}
-                  className="w-full rounded-lg border px-3 py-2"
-                >
-                  {Object.entries(AREA_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={responsableId}
-                  onChange={(e) => setResponsableId(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2"
-                  required
-                >
-                  <option value="">Asignar a empleado</option>
-                  {empleados.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.nombreCompleto} ({e.especialidad.replace(/_/g, ' ')})
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Descripción del trabajo..."
-                  rows={3}
-                  className="w-full rounded-lg border px-3 py-2"
-                  required
+            {estado === EstadoMaquina.EN_MANTENIMIENTO && (
+              <div className="space-y-4 border-t pt-4">
+                <p className="text-sm text-[#6c757d]">
+                  Asigna el trabajo a un empleado. Él iniciará sesión, describirá qué hará y
+                  finalizará. Tú validas y apruebas antes de marcar la máquina lista.
+                </p>
+                <ImagePicker
+                  label="Fotos del trabajo"
+                  disabled={uploading}
+                  onUpload={(files) => uploadPhotos(EtapaImagen.OTRA, files)}
+                  uploading={uploading}
                 />
-                <div className="flex flex-wrap gap-2">
-                  <button type="submit" className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm">
-                    Registrar intervención
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => avanzarEstado(EstadoMaquina.LISTA_PARA_VENTA)}
-                    className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold"
+                <form onSubmit={asignarTrabajo} className="rounded-lg bg-gray-50 border p-4 space-y-3">
+                  <p className="text-sm font-medium">Asignar nuevo trabajo</p>
+                  <select
+                    value={areaAsignar}
+                    onChange={(e) => setAreaAsignar(e.target.value as AreaIntervencion)}
+                    className="w-full rounded-lg border px-3 py-2"
                   >
-                    Trabajo terminado → Lista para venta
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {(estado === EstadoMaquina.LISTA_PARA_VENTA ||
-            estado === EstadoMaquina.RESERVADA ||
-            estado === EstadoMaquina.VENDIDA) && (
-            <>
-              <div className="rounded-xl bg-green-50 border border-green-200 p-6">
-                <h3 className="font-semibold text-lg mb-3">Precio de venta</h3>
-                <form onSubmit={savePrecio} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    value={precioUsd}
-                    onChange={(e) => setPrecioUsd(e.target.value)}
-                    placeholder="Precio USD"
-                    className="rounded-lg border px-3 py-2"
-                  />
-                  <input
-                    value={tipoCambio}
-                    onChange={(e) => setTipoCambio(e.target.value)}
-                    placeholder="Tipo de cambio"
-                    className="rounded-lg border px-3 py-2"
-                  />
-                  <input
-                    value={precioBob}
-                    onChange={(e) => setPrecioBob(e.target.value)}
-                    placeholder="Precio BOB"
-                    className="rounded-lg border px-3 py-2"
+                    {Object.entries(AREA_LABELS).map(([k, v]) => (
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={empleadoAsignarId}
+                    onChange={(e) => setEmpleadoAsignarId(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2"
+                    required
+                  >
+                    <option value="">Seleccionar empleado</option>
+                    {empleados.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nombreCompleto} — {e.especialidad.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    value={descAsignar}
+                    onChange={(e) => setDescAsignar(e.target.value)}
+                    placeholder="Qué debe hacer el trabajador..."
+                    rows={2}
+                    className="w-full rounded-lg border px-3 py-2"
+                    required
                   />
                   <button
                     type="submit"
-                    className="sm:col-span-3 rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm w-fit"
+                    disabled={empleados.length === 0}
+                    className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
                   >
-                    Guardar precio
+                    Asignar trabajo
                   </button>
                 </form>
-              </div>
-              <div className="rounded-xl bg-white border p-6">
-                <PhotoGallery
-                imagenes={maquina.imagenes ?? []}
-                title="Galería de fotos"
-              />
-              </div>
-            </>
-          )}
 
-          {maquina.intervenciones && maquina.intervenciones.length > 0 && (
-            <div className="rounded-xl bg-white border p-6">
-              <h3 className="font-semibold mb-4">Historial (auditoría)</h3>
-              <div className="space-y-4">
-                {maquina.intervenciones.map((i) => (
-                  <div key={i.id} className="border-l-4 border-[#f5c842] pl-4 py-1">
-                    <div className="flex flex-wrap gap-2 text-xs text-[#6c757d]">
-                      <span>{new Date(i.createdAt).toLocaleString('es-BO')}</span>
-                      <span>•</span>
-                      <span>{TIPO_INTERVENCION_LABELS[i.tipo]}</span>
-                      <span>•</span>
-                      <span>{AREA_LABELS[i.area]}</span>
-                    </div>
-                    <p className="mt-1">{i.descripcion}</p>
-                    <p className="text-sm text-[#6c757d] mt-1">
-                      Responsable: {i.responsableNombre ?? i.responsable?.nombreCompleto ?? '—'} — Registrado por:{' '}
-                      {i.registradoPor.nombre}
-                      {i.estadoIntervencion && (
-                        <> — Estado: {i.estadoIntervencion.replace(/_/g, ' ')}</>
-                      )}
-                    </p>
-                    {i.estadoIntervencion === EstadoIntervencion.FINALIZADO && (
-                      <div className="flex gap-2 mt-2">
-                        <button
-                          type="button"
-                          onClick={() => aprobarIntervencion(i.id)}
-                          className="text-xs bg-green-700 text-white px-3 py-1 rounded-lg"
-                        >
-                          Aprobar finalización
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => rechazarIntervencion(i.id)}
-                          className="text-xs bg-red-600 text-white px-3 py-1 rounded-lg"
-                        >
-                          Rechazar
-                        </button>
+                {intervencionesMantenimiento.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">Trabajos asignados</p>
+                    {intervencionesMantenimiento.map((i) => (
+                      <div key={i.id} className="rounded-lg border p-3 text-sm">
+                        <p className="font-medium">
+                          {i.responsableNombre ?? i.responsable?.nombreCompleto} —{' '}
+                          {AREA_LABELS[i.area]}
+                        </p>
+                        <p className="text-[#6c757d] mt-1">{i.descripcion}</p>
+                        {i.detalleTrabajo && (
+                          <p className="mt-1 bg-gray-50 p-2 rounded">Realizado: {i.detalleTrabajo}</p>
+                        )}
+                        <div className="text-xs text-[#6c757d] mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                          <p>Estado: {(i.estadoIntervencion ?? 'ASIGNADO').replace(/_/g, ' ')}</p>
+                          <p>Asignado: {formatDateTime(i.fechaAsignacion ?? i.createdAt)}</p>
+                          {i.fechaInicio && <p>Inicio: {formatDateTime(i.fechaInicio)}</p>}
+                          {i.fechaFinalizacion && (
+                            <p>Finalizado: {formatDateTime(i.fechaFinalizacion)}</p>
+                          )}
+                          {i.fechaAprobacion && (
+                            <p>Aprobado: {formatDateTime(i.fechaAprobacion)}</p>
+                          )}
+                        </div>
+                        {i.estadoIntervencion === EstadoIntervencion.FINALIZADO && (
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              type="button"
+                              onClick={() => aprobarIntervencion(i.id)}
+                              className="text-xs bg-green-700 text-white px-3 py-1 rounded-lg"
+                            >
+                              Validar trabajo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => rechazarIntervencion(i.id)}
+                              className="text-xs bg-red-600 text-white px-3 py-1 rounded-lg"
+                            >
+                              Rechazar
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {i.detalleTrabajo && (
-                      <p className="text-sm mt-1 bg-gray-50 p-2 rounded">Detalle: {i.detalleTrabajo}</p>
-                    )}
+                    ))}
                   </div>
-                ))}
+                )}
+
+                {hayTrabajoAprobado && !hayPendientesAprobacion && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => cambiarEstado(EstadoMaquina.LISTA_PARA_VENTA, 'Trabajo validado')}
+                    className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+                  >
+                    Trabajo terminado → Lista para venta
+                  </button>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            {(estado === EstadoMaquina.LISTA_PARA_VENTA ||
+              estado === EstadoMaquina.RESERVADA ||
+              estado === EstadoMaquina.VENDIDA) && (
+              <form onSubmit={savePrecio} className="border-t pt-4 space-y-3">
+                <p className="text-sm font-medium">Precios (USD)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-[#6c757d] mb-1">Precio de compra USD</label>
+                    <input
+                      value={precioCompraUsd}
+                      onChange={(e) => setPrecioCompraUsd(e.target.value)}
+                      placeholder="Ej. 5000"
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#6c757d] mb-1">Precio de venta USD</label>
+                    <input
+                      value={precioVentaUsd}
+                      onChange={(e) => setPrecioVentaUsd(e.target.value)}
+                      placeholder="Ej. 7500"
+                      className="w-full rounded-lg border px-3 py-2"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm"
+                >
+                  Guardar precio
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* CUADRO 3 — Historial */}
+          <div className="rounded-xl bg-white border p-6 space-y-6">
+            <h3 className="font-semibold text-lg">Historial</h3>
+
+            {maquina.historialEstados && maquina.historialEstados.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-[#6c757d] mb-3">Cambios de estado</p>
+                <div className="space-y-2">
+                  {maquina.historialEstados.map((h) => (
+                    <div key={h.id} className="text-sm border-l-4 border-gray-300 pl-3">
+                      <p className="font-medium">
+                        {h.anterior ? `${ESTADO_LABELS[h.anterior]} → ` : ''}
+                        {ESTADO_LABELS[h.estado]}
+                      </p>
+                      <p className="text-[#6c757d] text-xs">
+                        {new Date(h.createdAt).toLocaleString('es-BO')} — {h.creadoPor.nombre}
+                        {h.motivo ? ` — ${h.motivo}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {maquina.intervenciones && maquina.intervenciones.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-[#6c757d] mb-3">Auditoría de trabajos</p>
+                <div className="space-y-3">
+                  {maquina.intervenciones.map((i) => (
+                    <div key={i.id} className="border-l-4 border-[#f5c842] pl-4 py-1 text-sm">
+                      <div className="flex flex-wrap gap-2 text-xs text-[#6c757d]">
+                        <span>{new Date(i.createdAt).toLocaleString('es-BO')}</span>
+                        <span>•</span>
+                        <span>{TIPO_INTERVENCION_LABELS[i.tipo]}</span>
+                        <span>•</span>
+                        <span>{AREA_LABELS[i.area]}</span>
+                      </div>
+                      <p className="mt-1">{i.descripcion}</p>
+                      <p className="text-[#6c757d] mt-1">
+                        {i.responsableNombre ?? i.responsable?.nombreCompleto ?? '—'}
+                        {i.estadoIntervencion && (
+                          <> — {(i.estadoIntervencion as string).replace(/_/g, ' ')}</>
+                        )}
+                      </p>
+                      {(i.fechaAsignacion || i.fechaInicio || i.fechaFinalizacion) && (
+                        <p className="text-xs text-[#6c757d] mt-1">
+                          {i.fechaAsignacion && <>Asignado: {formatDateTime(i.fechaAsignacion)}</>}
+                          {i.fechaInicio && <> · Inicio: {formatDateTime(i.fechaInicio)}</>}
+                          {i.fechaFinalizacion && (
+                            <> · Fin: {formatDateTime(i.fechaFinalizacion)}</>
+                          )}
+                        </p>
+                      )}
+                      {i.detalleTrabajo && (
+                        <p className="mt-1 bg-gray-50 p-2 rounded text-xs">{i.detalleTrabajo}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(!maquina.historialEstados?.length && !maquina.intervenciones?.length) && (
+              <p className="text-sm text-[#6c757d]">Sin registros aún.</p>
+            )}
+          </div>
         </div>
       </AppShell>
     </AuthGuard>

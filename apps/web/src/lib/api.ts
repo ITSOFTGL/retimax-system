@@ -56,12 +56,21 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     headers.set('Authorization', `Bearer ${tokens.accessToken}`);
   }
 
-  let res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  } catch {
+    throw new Error('No se pudo conectar con la API. Verifique que el servidor esté activo (pnpm dev:api).');
+  }
 
   if (res.status === 401 && tokens?.refreshToken) {
     const newAccess = await refreshAccessToken(tokens.refreshToken);
     headers.set('Authorization', `Bearer ${newAccess}`);
-    res = await fetch(`${API_URL}${path}`, { ...init, headers });
+    try {
+      res = await fetch(`${API_URL}${path}`, { ...init, headers });
+    } catch {
+      throw new Error('No se pudo conectar con la API. Verifique que el servidor esté activo (pnpm dev:api).');
+    }
   }
 
   if (!res.ok) {

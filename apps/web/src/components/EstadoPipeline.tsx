@@ -31,7 +31,7 @@ export function EstadoPipeline({ estadoActual }: Props) {
     [EstadoMaquina.EN_DIAGNOSTICO]:
       'El trabajador asignado completa el diagnóstico por área. Si falta algo → mantenimiento; si no → lista para venta.',
     [EstadoMaquina.EN_MANTENIMIENTO]:
-      'Trabajos en curso. Registra intervenciones hasta dejar la máquina lista.',
+      'Asigna trabajos a empleados. Ellos registran y finalizan; tú validas y apruebas.',
     [EstadoMaquina.LISTA_PARA_VENTA]: 'Define precio de venta cuando esté listo.',
     [EstadoMaquina.RESERVADA]: 'Máquina reservada para un cliente.',
     [EstadoMaquina.VENDIDA]: 'Venta completada.',

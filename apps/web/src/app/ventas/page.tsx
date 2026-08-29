@@ -2,22 +2,41 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-import { ClienteDto, MaquinaDto, ReciboVentaDto, VentaDto } from '@retimax/shared-types';
+import {
+  ClienteDto,
+  EstadoMaquina,
+  MaquinaDto,
+  PedidoDto,
+  ReciboVentaDto,
+  VentaDto,
+} from '@retimax/shared-types';
 import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
+import { ClienteModal } from '@/components/ClienteModal';
 import { ReciboPrint } from '@/components/ReciboPrint';
 import { apiFetch } from '@/lib/api';
 import { ESTADO_LABELS } from '@/lib/labels';
 import { formatDecimal, multiplyDecimals, normalizeDecimal } from '@/lib/numbers';
 
+type ReservaInfo = {
+  anticipoUsd: string;
+  totalUsd: string;
+  saldoUsd: string;
+  clienteNombre: string;
+};
+
 export default function VentasPage() {
   const [ventas, setVentas] = useState<VentaDto[]>([]);
   const [clientes, setClientes] = useState<ClienteDto[]>([]);
   const [maquinas, setMaquinas] = useState<MaquinaDto[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoDto[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showClienteModal, setShowClienteModal] = useState(false);
+  const [editVentaId, setEditVentaId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [recibo, setRecibo] = useState<ReciboVentaDto | null>(null);
+  const [reservaInfo, setReservaInfo] = useState<ReservaInfo | null>(null);
   const [form, setForm] = useState({
     maquinaId: '',
     clienteId: '',
@@ -38,20 +57,69 @@ export default function VentasPage() {
     });
   }
 
+  function onMaquinaChange(maquinaId: string) {
+    updateForm({ maquinaId });
+    setReservaInfo(null);
+    const m = maquinas.find((x) => x.id === maquinaId);
+    if (!m) return;
+
+    const patch: Partial<typeof form> = {};
+    if (m.estado === EstadoMaquina.RESERVADA) {
+      const pedido = pedidos.find(
+        (p) => p.maquinaId === maquinaId && p.estado !== 'CANCELADO',
+      );
+      if (pedido) {
+        patch.clienteId = pedido.clienteId;
+        patch.precioFinalUsd = pedido.saldoUsd;
+        setReservaInfo({
+          anticipoUsd: pedido.anticipoUsd,
+          totalUsd: pedido.totalUsd,
+          saldoUsd: pedido.saldoUsd,
+          clienteNombre: pedido.cliente?.nombre ?? '',
+        });
+      } else if (m.precioVentaUsd) {
+        patch.precioFinalUsd = m.precioVentaUsd;
+      }
+    } else if (m.precioVentaUsd) {
+      patch.precioFinalUsd = m.precioVentaUsd;
+    }
+    if (Object.keys(patch).length) updateForm(patch);
+  }
+
   async function load() {
-    const [v, c, m] = await Promise.all([
+    const [v, c, m, p] = await Promise.all([
       apiFetch<VentaDto[]>('/ventas'),
       apiFetch<ClienteDto[]>('/clientes'),
       apiFetch<MaquinaDto[]>('/maquinas'),
+      apiFetch<PedidoDto[]>('/pedidos'),
     ]);
     setVentas(v);
     setClientes(c);
-    setMaquinas(m.filter((x) => x.estado === 'LISTA_PARA_VENTA' || x.estado === 'RESERVADA'));
+    setPedidos(p);
+    setMaquinas(
+      m.filter(
+        (x) => x.estado === EstadoMaquina.LISTA_PARA_VENTA || x.estado === EstadoMaquina.RESERVADA,
+      ),
+    );
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  function startEdit(venta: VentaDto) {
+    setEditVentaId(venta.id);
+    setForm({
+      maquinaId: venta.maquinaId,
+      clienteId: venta.clienteId,
+      precioFinalUsd: venta.precioFinalUsd,
+      precioFinalBob: venta.precioFinalBob,
+      tipoCambio: venta.tipoCambio,
+      fechaEntrega: venta.fechaEntrega.slice(0, 10),
+    });
+    setShowForm(true);
+    setReservaInfo(null);
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -66,8 +134,24 @@ export default function VentasPage() {
       if (!precioFinalUsd || !tipoCambio || !precioFinalBob) {
         throw new Error('Precio USD, tipo de cambio y precio BOB deben ser números válidos');
       }
-      if (!form.fechaEntrega) {
-        throw new Error('Selecciona la fecha de entrega');
+      if (!form.fechaEntrega) throw new Error('Selecciona la fecha de entrega');
+
+      if (editVentaId) {
+        await apiFetch(`/ventas/${editVentaId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            clienteId: form.clienteId,
+            precioFinalUsd,
+            precioFinalBob,
+            tipoCambio,
+            fechaEntrega: form.fechaEntrega,
+          }),
+        });
+        setEditVentaId(null);
+        setShowForm(false);
+        resetForm();
+        await load();
+        return;
       }
 
       const venta = await apiFetch<VentaDto>('/ventas', {
@@ -86,14 +170,7 @@ export default function VentasPage() {
         setRecibo(r);
       }
       setShowForm(false);
-      setForm({
-        maquinaId: '',
-        clienteId: '',
-        precioFinalUsd: '',
-        precioFinalBob: '',
-        tipoCambio: '',
-        fechaEntrega: '',
-      });
+      resetForm();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al registrar venta');
@@ -102,7 +179,20 @@ export default function VentasPage() {
     }
   }
 
+  function resetForm() {
+    setForm({
+      maquinaId: '',
+      clienteId: '',
+      precioFinalUsd: '',
+      precioFinalBob: '',
+      tipoCambio: '',
+      fechaEntrega: '',
+    });
+    setReservaInfo(null);
+  }
+
   const totalUsd = ventas.reduce((s, v) => s + parseFloat(v.precioFinalUsd), 0);
+  const maquinaSel = maquinas.find((m) => m.id === form.maquinaId);
 
   return (
     <AuthGuard adminOnly>
@@ -114,103 +204,83 @@ export default function VentasPage() {
               <p className="text-sm text-[#6c757d]">{ventas.length} máquina(s) vendida(s)</p>
             </div>
             <button
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                setEditVentaId(null);
+                resetForm();
+                setShowForm(!showForm);
+              }}
               className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm"
             >
               + Registrar venta
             </button>
           </div>
 
-          <div className="rounded-xl bg-green-50 border border-green-200 p-5">
-            <h3 className="font-semibold text-lg mb-3">Máquinas vendidas</h3>
-            {ventas.length === 0 ? (
-              <p className="text-sm text-[#6c757d]">Aún no hay ventas registradas.</p>
-            ) : (
-              <>
-                <p className="text-sm mb-4">
-                  Total facturado: <strong>${totalUsd.toFixed(2)} USD</strong>
-                </p>
-                <div className="space-y-2">
-                  {ventas.map((v) => (
-                    <div
-                      key={v.id}
-                      className="rounded-lg bg-white border p-4 flex flex-wrap justify-between gap-3"
-                    >
-                      <div>
-                        <Link
-                          href={`/maquinas/${v.maquinaId}`}
-                          className="font-semibold hover:text-[#f5c842]"
-                        >
-                          {v.maquina?.nombre ?? 'Máquina'}
-                        </Link>
-                        <p className="text-sm text-[#6c757d]">Cliente: {v.cliente?.nombre}</p>
-                        <p className="text-sm mt-1">
-                          ${v.precioFinalUsd} USD / Bs {v.precioFinalBob} (TC {v.tipoCambio})
-                        </p>
-                        <p className="text-xs text-[#6c757d]">
-                          Venta: {new Date(v.createdAt).toLocaleDateString('es-BO')} — Entrega:{' '}
-                          {new Date(v.fechaEntrega).toLocaleDateString('es-BO')}
-                        </p>
-                        {v.reciboVenta && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const r = await apiFetch<ReciboVentaDto>(`/ventas/${v.id}/recibo`);
-                              setRecibo(r);
-                            }}
-                            className="text-xs underline mt-1"
-                          >
-                            Imprimir recibo {v.reciboVenta.numero}
-                          </button>
-                        )}
-                      </div>
-                      <span className="text-xs bg-neutral-500 text-white px-2 py-1 rounded-full h-fit">
-                        Vendida
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
           {showForm && (
             <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 space-y-3">
-              <h3 className="font-semibold">Nueva venta</h3>
+              <h3 className="font-semibold">{editVentaId ? 'Editar venta' : 'Nueva venta'}</h3>
               <select
                 value={form.maquinaId}
-                onChange={(e) => updateForm({ maquinaId: e.target.value })}
+                onChange={(e) => onMaquinaChange(e.target.value)}
                 className="w-full rounded-lg border px-3 py-2"
                 required
+                disabled={!!editVentaId}
               >
-                <option value="">Máquina disponible</option>
+                <option value="">Máquina (lista para venta o reservada)</option>
                 {maquinas.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.nombre} ({ESTADO_LABELS[m.estado]})
+                    {m.nombre} — {ESTADO_LABELS[m.estado]}
+                    {m.precioVentaUsd ? ` ($${m.precioVentaUsd})` : ''}
                   </option>
                 ))}
               </select>
               {maquinas.length === 0 && (
-                <p className="text-amber-700 text-sm">No hay máquinas en lista para venta o reservadas.</p>
+                <p className="text-amber-700 text-sm">
+                  No hay máquinas en lista para venta o reservadas.
+                </p>
               )}
-              <select
-                value={form.clienteId}
-                onChange={(e) => updateForm({ clienteId: e.target.value })}
-                className="w-full rounded-lg border px-3 py-2"
-                required
-              >
-                <option value="">Cliente</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
+              {reservaInfo && (
+                <div className="text-sm bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <p className="font-medium">Máquina reservada — {reservaInfo.clienteNombre}</p>
+                  <p>
+                    Anticipo pagado: <strong>${reservaInfo.anticipoUsd}</strong> — Total reserva:{' '}
+                    <strong>${reservaInfo.totalUsd}</strong>
+                  </p>
+                  <p className="text-purple-800 mt-1">
+                    Saldo pendiente por cobrar: <strong>${reservaInfo.saldoUsd} USD</strong>
+                  </p>
+                </div>
+              )}
+              {maquinaSel?.precioVentaUsd && !reservaInfo && (
+                <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  Precio registrado: <strong>${maquinaSel.precioVentaUsd} USD</strong>
+                </p>
+              )}
+              <div className="flex gap-2 items-end">
+                <select
+                  value={form.clienteId}
+                  onChange={(e) => updateForm({ clienteId: e.target.value })}
+                  className="flex-1 rounded-lg border px-3 py-2"
+                  required
+                >
+                  <option value="">Cliente</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setShowClienteModal(true)}
+                  className="rounded-lg border px-3 py-2 text-sm whitespace-nowrap hover:bg-gray-50"
+                >
+                  + Cliente
+                </button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-[#6c757d] mb-1">Precio USD</label>
                   <input
-                    placeholder="Ej. 100"
                     value={form.precioFinalUsd}
                     onChange={(e) => updateForm({ precioFinalUsd: e.target.value })}
                     className="w-full rounded-lg border px-3 py-2"
@@ -220,7 +290,6 @@ export default function VentasPage() {
                 <div>
                   <label className="block text-xs text-[#6c757d] mb-1">Tipo de cambio</label>
                   <input
-                    placeholder="Ej. 11.96"
                     value={form.tipoCambio}
                     onChange={(e) => updateForm({ tipoCambio: e.target.value })}
                     className="w-full rounded-lg border px-3 py-2"
@@ -253,16 +322,96 @@ export default function VentasPage() {
                 </p>
               )}
               {error && <p className="text-red-600 text-sm">{error}</p>}
-              <button
-                type="submit"
-                disabled={loading || maquinas.length === 0}
-                className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {loading ? 'Guardando...' : 'Confirmar venta'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={loading || (!editVentaId && maquinas.length === 0)}
+                  className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {loading ? 'Guardando...' : editVentaId ? 'Guardar cambios' : 'Confirmar venta'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditVentaId(null);
+                    resetForm();
+                  }}
+                  className="rounded-lg border px-4 py-2 text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
             </form>
           )}
+
+          <div className="rounded-xl bg-green-50 border border-green-200 p-5">
+            <h3 className="font-semibold text-lg mb-3">Máquinas vendidas</h3>
+            {ventas.length === 0 ? (
+              <p className="text-sm text-[#6c757d]">Aún no hay ventas registradas.</p>
+            ) : (
+              <>
+                <p className="text-sm mb-4">
+                  Total facturado: <strong>${totalUsd.toFixed(2)} USD</strong>
+                </p>
+                <div className="space-y-2">
+                  {ventas.map((v) => (
+                    <div
+                      key={v.id}
+                      className="rounded-lg bg-white border p-4 flex flex-wrap justify-between gap-3"
+                    >
+                      <div>
+                        <Link
+                          href={`/maquinas/${v.maquinaId}`}
+                          className="font-semibold hover:text-[#f5c842]"
+                        >
+                          {v.maquina?.nombre ?? 'Máquina'}
+                        </Link>
+                        <p className="text-sm text-[#6c757d]">Cliente: {v.cliente?.nombre}</p>
+                        <p className="text-sm mt-1">
+                          ${v.precioFinalUsd} USD / Bs {v.precioFinalBob} (TC {v.tipoCambio})
+                        </p>
+                        <div className="flex flex-wrap gap-3 mt-2">
+                          {v.reciboVenta && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const r = await apiFetch<ReciboVentaDto>(`/ventas/${v.id}/recibo`);
+                                setRecibo(r);
+                              }}
+                              className="text-xs underline"
+                            >
+                              Ver / imprimir recibo {v.reciboVenta.numero}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => startEdit(v)}
+                            className="text-xs underline text-[#6c757d]"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+                      <span className="text-xs bg-neutral-500 text-white px-2 py-1 rounded-full h-fit">
+                        Vendida
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
+
+        <ClienteModal
+          open={showClienteModal}
+          onClose={() => setShowClienteModal(false)}
+          onCreated={(c) => {
+            setClientes((prev) => [...prev, c]);
+            updateForm({ clienteId: c.id });
+          }}
+        />
 
         {recibo && (
           <ReciboPrint
@@ -284,11 +433,6 @@ export default function VentasPage() {
                 <span className="text-[#6c757d]">Máquina:</span> {recibo.venta?.maquina.nombre} (
                 {recibo.venta?.maquina.tipo})
               </p>
-              {recibo.venta?.maquina.proveedor && (
-                <p>
-                  <span className="text-[#6c757d]">Proveedor:</span> {recibo.venta.maquina.proveedor}
-                </p>
-              )}
               <hr className="my-3" />
               <p>
                 <span className="text-[#6c757d]">Precio USD:</span>{' '}

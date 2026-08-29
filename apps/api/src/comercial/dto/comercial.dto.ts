@@ -42,6 +42,64 @@ export class UpdatePedidoEstadoDto {
   estado!: EstadoPedido;
 }
 
+export class UpdatePedidoDto {
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  maquinaId?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcionReferencia?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  anticipoUsd?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  saldoUsd?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  totalUsd?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaEntregaEstimada?: string;
+}
+
+export class UpdateVentaDto {
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  precioFinalUsd?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,2})?$/)
+  precioFinalBob?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d+(\.\d{1,4})?$/)
+  tipoCambio?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fechaEntrega?: string;
+}
+
 export class CreateVentaDto {
   @IsUUID()
   maquinaId!: string;
