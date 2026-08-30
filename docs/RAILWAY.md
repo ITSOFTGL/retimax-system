@@ -24,10 +24,8 @@
 - Dockerfile path: `apps/api/Dockerfile`
 
 **Settings → Deploy → Start Command**
-```
-pnpm --filter @retimax/api start:railway
-```
-*(O dejar el ENTRYPOINT del Dockerfile si usas solo Docker)*
+- **Dejar vacío** (lo define `railway.api.toml` → `docker-entrypoint.sh`)
+- **No uses** `pnpm --filter @retimax/api start` con Dockerfile — provoca **502**
 
 **Variables**
 ```
@@ -117,3 +115,4 @@ Los scripts `prebuild` ya compilan `shared-types` y generan Prisma automáticame
 | EBUSY `.next/cache` | Actualizar a último `main` |
 | Web sin datos | `NEXT_PUBLIC_API_URL` incorrecta |
 | CORS | `CORS_ORIGIN` = URL exacta de Web |
+| **502 Bad Gateway** | Borra Start Command manual; usa `railway.*.toml`. Revisa logs de deploy. |
