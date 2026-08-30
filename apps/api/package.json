@@ -8,7 +8,7 @@
     "dev": "nest start --watch",
     "start": "node dist/src/main",
     "start:prod": "node dist/src/main",
-    "start:railway": "prisma migrate deploy && node dist/src/main",
+    "start:railway": "prisma migrate deploy && node prisma/seed.js && node dist/src/main",
     "lint": "tsc --noEmit",
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",

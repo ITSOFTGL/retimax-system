@@ -5,6 +5,10 @@
 > **Root Directory = vacío (raíz del repo `/`)** para ambos servicios.  
 > No uses `apps/api` ni `apps/web` como root — rompe el workspace de pnpm.
 
+> **Importante:** usa los archivos `railway.api.toml` y `railway.web.toml` del repo.  
+> Si Railway usa **Railpack** con `pnpm --filter ... build` sin Docker, fallará con
+> `@retimax/shared-types` o Prisma. El Dockerfile ya compila todo en el orden correcto.
+
 ---
 
 ## Servicio API (`@retimax/api`)
@@ -12,8 +16,11 @@
 **Settings → General**
 - Root Directory: *(dejar vacío)*
 
+**Settings → Config-as-code**
+- Config file path: `railway.api.toml`
+
 **Settings → Build**
-- Builder: **Dockerfile**
+- Builder: **Dockerfile** *(lo fija `railway.api.toml`)*
 - Dockerfile path: `apps/api/Dockerfile`
 
 **Settings → Deploy → Start Command**
@@ -43,8 +50,11 @@ PORT=4000
 **Settings → General**
 - Root Directory: *(dejar vacío)*
 
+**Settings → Config-as-code**
+- Config file path: `railway.web.toml`
+
 **Settings → Build**
-- Builder: **Dockerfile**
+- Builder: **Dockerfile** *(lo fija `railway.web.toml`)*
 - Dockerfile path: `apps/web/Dockerfile`
 
 **Variables / Build Args**
