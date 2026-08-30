@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "clean": "node scripts/clean-all-cache.js",
-    "prebuild": "node scripts/clean-all-cache.js",
+    "prebuild": "node scripts/prebuild.js",
     "predev": "node scripts/clean-dev-cache.js",
     "dev": "next dev --turbopack",
     "build": "next build",
