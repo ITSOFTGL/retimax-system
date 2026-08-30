@@ -1,8 +1,8 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "apps/api/Dockerfile"
+builder = "RAILPACK"
+buildCommand = "pnpm --filter @retimax/api build"
 
 [deploy]
-startCommand = "/app/apps/api/docker-entrypoint.sh"
+startCommand = "pnpm --filter @retimax/api start:railway"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
