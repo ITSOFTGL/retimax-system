@@ -10,11 +10,13 @@ Guía paso a paso para subir la demo. En Railway **no ocurren** los errores de `
 
 ## Arquitectura en Railway
 
-| Servicio | Qué es | Dockerfile |
-|----------|--------|------------|
-| **postgres** | Base de datos | Plugin Railway |
-| **api** | NestJS + Prisma | `apps/api/Dockerfile` |
-| **web** | Next.js | `apps/web/Dockerfile` |
+| Servicio | Root Directory | Config |
+|----------|----------------|--------|
+| **postgres** | — | Plugin Railway |
+| **api** | `apps/api` | `apps/api/railway.toml` |
+| **web** | `apps/web` | `apps/web/railway.toml` |
+
+> **Importante:** cada servicio debe tener su **Root Directory** configurado. Si queda en `/`, el build fallará.
 
 ---
 
@@ -44,13 +46,13 @@ git push origin main
 
 ## Paso 4 — Servicio API
 
-1. **+ New** → **GitHub Repo** → mismo repo (o **Empty Service** + conectar repo)
+1. **+ New** → **GitHub Repo** → mismo repo
 2. Renombra el servicio a `api`
-3. **Settings**:
-   - **Root Directory**: `/` (raíz del monorepo)
-   - **Dockerfile Path**: `apps/api/Dockerfile`
-   - **Watch Paths**: `apps/api/**`, `packages/shared-types/**`
-4. **Variables** (Settings → Variables):
+3. **Settings** → **Root Directory**: `apps/api`
+4. Railway detectará `apps/api/railway.toml` con:
+   - Build: `pnpm exec turbo run build --filter=@retimax/api`
+   - Start: migraciones + servidor
+5. **Variables** (Settings → Variables):
 
 ```
 DATABASE_URL=${{Postgres.DATABASE_URL}}
@@ -77,18 +79,9 @@ PORT=4000
 
 1. **+ New** → **GitHub Repo** → mismo repo
 2. Renombra a `web`
-3. **Settings**:
-   - **Root Directory**: `/`
-   - **Dockerfile Path**: `apps/web/Dockerfile`
-   - **Watch Paths**: `apps/web/**`, `packages/shared-types/**`
-4. **Variables**:
-
-```
-NEXT_PUBLIC_API_URL=https://retimax-api.up.railway.app
-PORT=3000
-```
-
-5. **Build Args** (importante — la URL de la API se embebe en el build):
+3. **Settings** → **Root Directory**: `apps/web`
+4. Railway detectará `apps/web/railway.toml` con build/start automáticos
+5. **Variables** y **Build Args**:
 
 ```
 NEXT_PUBLIC_API_URL=https://retimax-api.up.railway.app
@@ -141,7 +134,9 @@ Redeploy la API.
 
 | Problema | Solución |
 |----------|----------|
-| Web no carga datos | Verificar `NEXT_PUBLIC_API_URL` en build args de Web |
+| Web no carga datos | Verificar `NEXT_PUBLIC_API_URL` en variables de Web |
+| Build web EBUSY cache | Actualizar a último `main` (scripts omiten limpieza en CI) |
+| Build API 109 errores TS | Root Directory debe ser `apps/api` (corre `prisma generate`) |
 | CORS error | `CORS_ORIGIN` en API debe ser exactamente la URL de Web |
 | Fotos no persisten | Agregar Volume en API en `/data/uploads` |
 | Errores `.next` en local | `pnpm dev:web:clean` — no es problema de RAM |
