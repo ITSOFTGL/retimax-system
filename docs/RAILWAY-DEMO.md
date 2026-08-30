@@ -26,11 +26,13 @@ pnpm --filter @retimax/web start
 pnpm --filter @retimax/web build
 ```
 
-**Variables (solo 2):**
+**Variables (solo 2 — NO pongas PORT):**
 ```
 NEXT_PUBLIC_API_URL=https://TU-API.up.railway.app
-PORT=3000
+HOSTNAME=0.0.0.0
 ```
+
+> Railway asigna `PORT` automáticamente. Si pones `PORT=3000` manual, la app puede no responder.
 
 ---
 
