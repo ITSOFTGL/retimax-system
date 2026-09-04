@@ -3,19 +3,60 @@ import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+async function backfillUsernames() {
+  await prisma.$executeRawUnsafe(`
+    UPDATE usuarios
+    SET username = LOWER(SPLIT_PART(email, '@', 1))
+    WHERE username IS NULL OR TRIM(username) = '';
+  `);
+}
+
+async function upsertUsuario(params: {
+  email: string;
+  username: string;
+  nombre: string;
+  passwordHash: string;
+  rol: 'ADMIN' | 'EMPLEADO';
+  empleadoId: string | null;
+}) {
+  const existing = await prisma.usuario.findUnique({ where: { email: params.email } });
+  if (existing) {
+    return prisma.usuario.update({
+      where: { id: existing.id },
+      data: {
+        username: params.username,
+        nombre: params.nombre,
+        rol: params.rol,
+        empleadoId: params.empleadoId,
+        passwordHash: params.passwordHash,
+      },
+    });
+  }
+
+  return prisma.usuario.create({
+    data: {
+      email: params.email,
+      username: params.username,
+      nombre: params.nombre,
+      passwordHash: params.passwordHash,
+      rol: params.rol,
+      empleadoId: params.empleadoId,
+    },
+  });
+}
+
 async function main() {
+  await backfillUsernames();
+
   const passwordHash = await bcrypt.hash('Admin123!', 12);
 
-  const admin = await prisma.usuario.upsert({
-    where: { email: 'admin@retimax.local' },
-    update: { username: 'admin' },
-    create: {
-      nombre: 'Administrador RETIMAX',
-      email: 'admin@retimax.local',
-      username: 'admin',
-      passwordHash,
-      rol: 'ADMIN',
-    },
+  const admin = await upsertUsuario({
+    email: 'admin@retimax.local',
+    username: 'admin',
+    nombre: 'Administrador RETIMAX',
+    passwordHash,
+    rol: 'ADMIN',
+    empleadoId: null,
   });
 
   const proveedor = await prisma.proveedor.upsert({
@@ -51,17 +92,13 @@ async function main() {
     },
   });
 
-  await prisma.usuario.upsert({
-    where: { email: 'alex@retimax.local' },
-    update: { empleadoId: empleado.id, rol: 'EMPLEADO', username: 'alex' },
-    create: {
-      nombre: 'Alex Demo',
-      email: 'alex@retimax.local',
-      username: 'alex',
-      passwordHash: empPassword,
-      rol: 'EMPLEADO',
-      empleadoId: empleado.id,
-    },
+  await upsertUsuario({
+    email: 'alex@retimax.local',
+    username: 'alex',
+    nombre: 'Alex Demo',
+    passwordHash: empPassword,
+    rol: 'EMPLEADO',
+    empleadoId: empleado.id,
   });
 
   console.log('Seed completado:', {

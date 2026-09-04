@@ -3,19 +3,53 @@ const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
 
+async function backfillUsernames() {
+  await prisma.$executeRawUnsafe(`
+    UPDATE usuarios
+    SET username = LOWER(SPLIT_PART(email, '@', 1))
+    WHERE username IS NULL OR TRIM(username) = '';
+  `);
+}
+
+async function upsertUsuario({ email, username, nombre, passwordHash, rol, empleadoId }) {
+  const existing = await prisma.usuario.findUnique({ where: { email } });
+  if (existing) {
+    return prisma.usuario.update({
+      where: { id: existing.id },
+      data: {
+        username,
+        nombre,
+        rol,
+        empleadoId,
+        ...(passwordHash ? { passwordHash } : {}),
+      },
+    });
+  }
+
+  return prisma.usuario.create({
+    data: {
+      email,
+      username,
+      nombre,
+      passwordHash,
+      rol,
+      empleadoId,
+    },
+  });
+}
+
 async function main() {
+  await backfillUsernames();
+
   const passwordHash = await bcrypt.hash('Admin123!', 12);
 
-  const admin = await prisma.usuario.upsert({
-    where: { email: 'admin@retimax.local' },
-    update: { username: 'admin' },
-    create: {
-      nombre: 'Administrador RETIMAX',
-      email: 'admin@retimax.local',
-      username: 'admin',
-      passwordHash,
-      rol: 'ADMIN',
-    },
+  const admin = await upsertUsuario({
+    email: 'admin@retimax.local',
+    username: 'admin',
+    nombre: 'Administrador RETIMAX',
+    passwordHash,
+    rol: 'ADMIN',
+    empleadoId: null,
   });
 
   const proveedor = await prisma.proveedor.upsert({
@@ -51,17 +85,13 @@ async function main() {
     },
   });
 
-  await prisma.usuario.upsert({
-    where: { email: 'alex@retimax.local' },
-    update: { empleadoId: empleado.id, rol: 'EMPLEADO', username: 'alex' },
-    create: {
-      nombre: 'Alex Demo',
-      email: 'alex@retimax.local',
-      username: 'alex',
-      passwordHash: empPassword,
-      rol: 'EMPLEADO',
-      empleadoId: empleado.id,
-    },
+  await upsertUsuario({
+    email: 'alex@retimax.local',
+    username: 'alex',
+    nombre: 'Alex Demo',
+    passwordHash: empPassword,
+    rol: 'EMPLEADO',
+    empleadoId: empleado.id,
   });
 
   console.log('Seed completado:', {
