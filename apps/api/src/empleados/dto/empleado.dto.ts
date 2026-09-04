@@ -23,6 +23,15 @@ export class CreateEmpleadoDto {
   @IsOptional()
   @IsString()
   telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  carnet?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  username?: string;
 }
 
 export class UpdateEmpleadoDto {
@@ -47,6 +56,10 @@ export class UpdateEmpleadoDto {
   @IsOptional()
   @IsString()
   telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  carnet?: string;
 
   @IsOptional()
   @IsBoolean()

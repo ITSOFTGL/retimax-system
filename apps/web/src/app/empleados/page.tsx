@@ -12,6 +12,7 @@ import { apiFetch } from '@/lib/api';
 import {
   passwordMeetsPolicy,
   suggestEmpleadoEmail,
+  suggestEmpleadoUsername,
   SUGGESTED_EMPLEADO_PASSWORD,
 } from '@/lib/empleado-suggestions';
 
@@ -31,10 +32,14 @@ export default function EmpleadosPage() {
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [emailManual, setEmailManual] = useState(false);
+  const [usernameManual, setUsernameManual] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [otraEspecialidad, setOtraEspecialidad] = useState('');
   const [form, setForm] = useState({
     nombre: '',
     apellido: '',
+    carnet: '',
+    username: '',
     email: '',
     telefono: '',
     password: SUGGESTED_EMPLEADO_PASSWORD,
@@ -65,16 +70,28 @@ export default function EmpleadosPage() {
     }
   }, [form.nombre, form.apellido, editing, emailManual]);
 
+  useEffect(() => {
+    if (editing || usernameManual) return;
+    const suggested = suggestEmpleadoUsername(form.carnet, form.nombre, form.apellido);
+    if (suggested) {
+      setForm((prev) => ({ ...prev, username: suggested }));
+    }
+  }, [form.carnet, form.nombre, form.apellido, editing, usernameManual]);
+
   function resetForm() {
     setForm({
       nombre: '',
       apellido: '',
+      carnet: '',
+      username: '',
       email: '',
       telefono: '',
       password: SUGGESTED_EMPLEADO_PASSWORD,
       especialidad: Especialidad.MECANICO,
     });
     setEmailManual(false);
+    setUsernameManual(false);
+    setShowPassword(false);
     setOtraEspecialidad('');
     setEditing(null);
     setShowForm(false);
@@ -83,9 +100,12 @@ export default function EmpleadosPage() {
   function startEdit(emp: EmpleadoDto) {
     setEditing(emp);
     setEmailManual(true);
+    setUsernameManual(true);
     setForm({
       nombre: emp.nombre,
       apellido: emp.apellido,
+      carnet: emp.carnet ?? '',
+      username: emp.username ?? '',
       email: emp.email,
       telefono: emp.telefono ?? '',
       password: '',
@@ -115,6 +135,7 @@ export default function EmpleadosPage() {
           body: JSON.stringify({
             nombre: form.nombre,
             apellido: form.apellido,
+            carnet: form.carnet || undefined,
             email: form.email,
             telefono: form.telefono || undefined,
             especialidad: form.especialidad,
@@ -125,6 +146,8 @@ export default function EmpleadosPage() {
         const payload: CreateEmpleadoRequest = {
           nombre: form.nombre,
           apellido: form.apellido,
+          carnet: form.carnet || undefined,
+          username: form.username || undefined,
           email: form.email,
           password: form.password,
           especialidad: form.especialidad,
@@ -185,6 +208,23 @@ export default function EmpleadosPage() {
                   className="rounded-lg border px-3 py-2.5"
                   required
                 />
+                <input
+                  value={form.carnet}
+                  onChange={(e) => setForm({ ...form, carnet: e.target.value })}
+                  placeholder="Carnet (usuario sugerido)"
+                  className="rounded-lg border px-3 py-2.5"
+                />
+                <input
+                  value={form.username}
+                  onChange={(e) => {
+                    setUsernameManual(true);
+                    setForm({ ...form, username: e.target.value });
+                  }}
+                  placeholder="Usuario de acceso *"
+                  className="rounded-lg border px-3 py-2.5"
+                  required={!editing}
+                  disabled={!!editing}
+                />
                 <div className="sm:col-span-2">
                   <input
                     type="email"
@@ -193,13 +233,16 @@ export default function EmpleadosPage() {
                       setEmailManual(true);
                       setForm({ ...form, email: e.target.value });
                     }}
-                    placeholder="Email (usuario de acceso) *"
+                    placeholder="Email de contacto *"
                     className="w-full rounded-lg border px-3 py-2.5"
                     required
                   />
                   {!editing && form.nombre && form.apellido && (
                     <p className="text-xs text-[#6c757d] mt-1">
-                      Sugerido: {suggestEmpleadoEmail(form.nombre, form.apellido)}
+                      Email sugerido: {suggestEmpleadoEmail(form.nombre, form.apellido)}
+                      {form.carnet && (
+                        <> · Usuario sugerido: {suggestEmpleadoUsername(form.carnet, form.nombre, form.apellido)}</>
+                      )}
                     </p>
                   )}
                 </div>
@@ -210,14 +253,24 @@ export default function EmpleadosPage() {
                   className="rounded-lg border px-3 py-2.5"
                 />
                 <div>
-                  <input
-                    type="password"
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    placeholder={editing ? 'Nueva contraseña (opcional)' : 'Contraseña *'}
-                    className="w-full rounded-lg border px-3 py-2.5"
-                    required={!editing}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      placeholder={editing ? 'Nueva contraseña (opcional)' : 'Contraseña *'}
+                      className="w-full rounded-lg border px-3 py-2.5 pr-10"
+                      required={!editing}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6c757d] hover:text-[#1a1a1a] p-1"
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showPassword ? '🙈' : '👁'}
+                    </button>
+                  </div>
                   {!editing && (
                     <p className="text-xs text-[#6c757d] mt-1">
                       Sugerida: {SUGGESTED_EMPLEADO_PASSWORD} (8+ chars, mayús, minús, número y símbolo)
@@ -275,7 +328,8 @@ export default function EmpleadosPage() {
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="text-left p-3">Nombre</th>
-                      <th className="text-left p-3">Email</th>
+                      <th className="text-left p-3">Usuario</th>
+                      <th className="text-left p-3">Carnet</th>
                       <th className="text-left p-3">Especialidad</th>
                       <th className="text-left p-3">Estado</th>
                       <th className="p-3" />
@@ -285,7 +339,8 @@ export default function EmpleadosPage() {
                     {empleados.map((e) => (
                       <tr key={e.id} className="border-b last:border-0">
                         <td className="p-3 font-medium">{e.nombreCompleto}</td>
-                        <td className="p-3">{e.email}</td>
+                        <td className="p-3">{e.username ?? '—'}</td>
+                        <td className="p-3">{e.carnet ?? '—'}</td>
                         <td className="p-3">{e.especialidad.replace(/_/g, ' ')}</td>
                         <td className="p-3">
                           <span
@@ -325,7 +380,10 @@ export default function EmpleadosPage() {
                         {e.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
-                    <p className="text-sm text-[#6c757d] break-all">{e.email}</p>
+                    <p className="text-sm text-[#6c757d]">
+                      Usuario: {e.username ?? '—'}
+                      {e.carnet ? ` · Carnet: ${e.carnet}` : ''}
+                    </p>
                     <p className="text-sm">{e.especialidad.replace(/_/g, ' ')}</p>
                     <div className="flex gap-3 pt-1">
                       <button onClick={() => startEdit(e)} className="text-sm underline">

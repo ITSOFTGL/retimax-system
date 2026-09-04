@@ -5,11 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AreaIntervencion,
   EstadoAprobacion,
   EstadoIntervencion,
   Rol,
+  TipoIntervencion,
   Usuario,
 } from '@prisma/client';
+import { areasForEspecialidad } from '../common/empleado-utils';
 import { toIntervencionDto } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -22,15 +25,24 @@ export class IntervencionesService {
       throw new ForbiddenException('Solo empleados pueden ver sus trabajos');
     }
 
+    const empleado = await this.prisma.empleado.findUnique({ where: { id: user.empleadoId } });
+    if (!empleado?.activo) {
+      throw new ForbiddenException('Empleado inactivo');
+    }
+
+    const allowedAreas = areasForEspecialidad(empleado.especialidad);
+
     const rows = await this.prisma.intervencion.findMany({
       where: {
         responsableId: user.empleadoId,
+        area: { in: allowedAreas },
+        tipo: { in: [TipoIntervencion.TRABAJO_REALIZADO, TipoIntervencion.DIAGNOSTICO_INICIAL] },
         estadoIntervencion: { notIn: [EstadoIntervencion.CANCELADO] },
       },
       include: this.includeRelations(),
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map((r) => toIntervencionDto(r));
+    return rows.map((r) => toIntervencionDto(r, { employeeView: true }));
   }
 
   async listPendientesAprobacion() {
@@ -57,7 +69,7 @@ export class IntervencionesService {
       },
       include: this.includeRelations(),
     });
-    return toIntervencionDto(updated);
+    return toIntervencionDto(updated, { employeeView: true });
   }
 
   async finalizar(
@@ -85,7 +97,7 @@ export class IntervencionesService {
       },
       include: this.includeRelations(),
     });
-    return toIntervencionDto(updated);
+    return toIntervencionDto(updated, { employeeView: true });
   }
 
   async aprobar(id: string, user: Usuario) {
@@ -138,11 +150,21 @@ export class IntervencionesService {
     if (user.rol !== Rol.EMPLEADO || !user.empleadoId) {
       throw new ForbiddenException('Acceso denegado');
     }
+
+    const empleado = await this.prisma.empleado.findUnique({ where: { id: user.empleadoId } });
+    if (!empleado?.activo) throw new ForbiddenException('Empleado inactivo');
+
     const intervencion = await this.prisma.intervencion.findUnique({ where: { id } });
     if (!intervencion) throw new NotFoundException('Intervención no encontrada');
     if (intervencion.responsableId !== user.empleadoId) {
       throw new ForbiddenException('Este trabajo no está asignado a usted');
     }
+
+    const allowedAreas = areasForEspecialidad(empleado.especialidad);
+    if (!allowedAreas.includes(intervencion.area)) {
+      throw new ForbiddenException('No tiene acceso a trabajos de esta área');
+    }
+
     return intervencion;
   }
 

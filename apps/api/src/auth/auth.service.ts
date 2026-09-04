@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  username: string;
   rol: string;
 }
 
@@ -26,6 +26,7 @@ export class AuthService {
   private toUsuarioDto(user: {
     id: string;
     nombre: string;
+    username: string;
     email: string;
     rol: string;
     activo: boolean;
@@ -35,6 +36,7 @@ export class AuthService {
     return {
       id: user.id,
       nombre: user.nombre,
+      username: user.username,
       email: user.email,
       rol: user.rol,
       activo: user.activo,
@@ -43,8 +45,9 @@ export class AuthService {
     };
   }
 
-  async login(email: string, password: string) {
-    const user = await this.prisma.usuario.findUnique({ where: { email } });
+  async login(username: string, password: string) {
+    const normalized = username.trim().toLowerCase();
+    const user = await this.prisma.usuario.findUnique({ where: { username: normalized } });
     if (!user || !user.activo) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
@@ -54,7 +57,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    const tokens = await this.issueTokens(user.id, user.email, user.rol);
+    const tokens = await this.issueTokens(user.id, user.username, user.rol);
     return {
       ...tokens,
       usuario: this.toUsuarioDto(user),
@@ -79,7 +82,7 @@ export class AuthService {
 
     const tokens = await this.issueTokens(
       stored.usuario.id,
-      stored.usuario.email,
+      stored.usuario.username,
       stored.usuario.rol,
     );
 
@@ -106,8 +109,8 @@ export class AuthService {
     return user;
   }
 
-  private async issueTokens(userId: string, email: string, rol: string) {
-    const payload: JwtPayload = { sub: userId, email, rol };
+  private async issueTokens(userId: string, username: string, rol: string) {
+    const payload: JwtPayload = { sub: userId, username, rol };
 
     const accessToken = await this.jwt.signAsync(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),

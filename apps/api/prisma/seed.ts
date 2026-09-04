@@ -8,10 +8,11 @@ async function main() {
 
   const admin = await prisma.usuario.upsert({
     where: { email: 'admin@retimax.local' },
-    update: {},
+    update: { username: 'admin' },
     create: {
       nombre: 'Administrador RETIMAX',
       email: 'admin@retimax.local',
+      username: 'admin',
       passwordHash,
       rol: 'ADMIN',
     },
@@ -40,21 +41,23 @@ async function main() {
   const empPassword = await bcrypt.hash('Empleado123!', 12);
   const empleado = await prisma.empleado.upsert({
     where: { email: 'alex@retimax.local' },
-    update: {},
+    update: { carnet: '100001' },
     create: {
       nombre: 'Alex',
       apellido: 'Demo',
       email: 'alex@retimax.local',
+      carnet: '100001',
       especialidad: 'ELECTRICO',
     },
   });
 
   await prisma.usuario.upsert({
     where: { email: 'alex@retimax.local' },
-    update: { empleadoId: empleado.id, rol: 'EMPLEADO' },
+    update: { empleadoId: empleado.id, rol: 'EMPLEADO', username: 'alex' },
     create: {
       nombre: 'Alex Demo',
       email: 'alex@retimax.local',
+      username: 'alex',
       passwordHash: empPassword,
       rol: 'EMPLEADO',
       empleadoId: empleado.id,
@@ -62,8 +65,8 @@ async function main() {
   });
 
   console.log('Seed completado:', {
-    admin: admin.email,
-    empleado: empleado.email,
+    admin: admin.username,
+    empleado: 'alex',
     proveedor: proveedor.nombre,
     cliente: cliente.nombre,
   });

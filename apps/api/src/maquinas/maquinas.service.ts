@@ -13,6 +13,7 @@ import {
   TipoIntervencion,
   Usuario,
 } from '@prisma/client';
+import { buildMaquinaNombre } from '../common/empleado-utils';
 import { toIntervencionDto, toMaquinaDto } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
@@ -106,10 +107,14 @@ export class MaquinasService {
     if (!proveedor) throw new BadRequestException('Proveedor no encontrado');
 
     const maquina = await this.prisma.$transaction(async (tx) => {
+      const nombre = buildMaquinaNombre(dto.tipo, dto.marca, dto.modelo);
       const created = await tx.maquina.create({
         data: {
-          nombre: dto.nombre,
+          nombre,
           tipo: dto.tipo,
+          marca: dto.marca,
+          modelo: dto.modelo,
+          anio: dto.anio,
           proveedorId: dto.proveedorId,
           descripcionLlegada: dto.descripcionLlegada,
           descripcionAcordada: dto.descripcionAcordada ?? dto.descripcionLlegada,
@@ -152,8 +157,14 @@ export class MaquinasService {
     const updated = await this.prisma.maquina.update({
       where: { id },
       data: {
-        nombre: dto.nombre,
+        nombre:
+          dto.tipo && dto.marca && dto.modelo
+            ? buildMaquinaNombre(dto.tipo, dto.marca, dto.modelo)
+            : dto.nombre,
         tipo: dto.tipo,
+        marca: dto.marca,
+        modelo: dto.modelo,
+        anio: dto.anio,
         proveedorId: dto.proveedorId,
         descripcionLlegada: dto.descripcionLlegada,
         fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : undefined,
@@ -224,22 +235,13 @@ export class MaquinasService {
       await this.uploadImagenes(id, { etapa: EtapaImagen.LLEGADA }, files);
     }
 
-    let empleadoNombre = dto.empleadoDiagnostico;
-    let empleadoId = dto.empleadoDiagnosticoId;
-
-    if (empleadoId) {
-      const emp = await this.prisma.empleado.findUnique({ where: { id: empleadoId } });
-      if (!emp) throw new BadRequestException('Empleado no encontrado');
-      empleadoNombre = `${emp.nombre} ${emp.apellido}`;
-    }
-
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.historialEstado.create({
         data: {
           maquinaId: id,
           estado: EstadoMaquina.EN_DIAGNOSTICO,
           anterior: maquina.estado,
-          motivo: 'Recepción verificada',
+          motivo: 'Recepción verificada — pendiente diagnóstico por área',
           creadoPorId: user.id,
         },
       });
@@ -248,39 +250,23 @@ export class MaquinasService {
         where: { id },
         data: {
           descripcionLlegada: dto.descripcionLlegada,
-          empleadoDiagnostico: empleadoNombre,
-          empleadoDiagnosticoId: empleadoId,
+          empleadoDiagnostico: null,
+          empleadoDiagnosticoId: null,
           fechaLlegadaReal: dto.fechaLlegadaReal ? new Date(dto.fechaLlegadaReal) : maquina.fechaLlegadaReal,
           estado: EstadoMaquina.EN_DIAGNOSTICO,
         },
         include: this.includeDetail(),
       });
 
-      if (empleadoId) {
-        await tx.intervencion.create({
-          data: {
-            maquinaId: id,
-            tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
-            area: AreaIntervencion.MANTENIMIENTO_GENERAL,
-            descripcion: `Recepción verificada. Asignado a ${empleadoNombre} para diagnóstico.`,
-            responsableId: empleadoId,
-            fechaAsignacion: new Date(),
-            estadoIntervencion: EstadoIntervencion.ASIGNADO,
-            registradoPorId: user.id,
-          },
-        });
-      } else {
-        await tx.intervencion.create({
-          data: {
-            maquinaId: id,
-            tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
-            area: AreaIntervencion.MANTENIMIENTO_GENERAL,
-            descripcion: `Recepción verificada. Asignado a ${empleadoNombre} para diagnóstico.`,
-            responsableNombre: empleadoNombre,
-            registradoPorId: user.id,
-          },
-        });
-      }
+      await tx.intervencion.create({
+        data: {
+          maquinaId: id,
+          tipo: TipoIntervencion.OBSERVACION_ADICIONAL,
+          area: AreaIntervencion.MANTENIMIENTO_GENERAL,
+          descripcion: `Recepción verificada: ${dto.descripcionLlegada}`,
+          registradoPorId: user.id,
+        },
+      });
 
       return m;
     });
@@ -295,42 +281,75 @@ export class MaquinasService {
       throw new BadRequestException('Solo se puede completar diagnóstico en ese estado');
     }
 
-    const areas: { area: AreaIntervencion; texto?: string }[] = [
-      { area: AreaIntervencion.MECANICA, texto: dto.mecanica?.trim() },
-      { area: AreaIntervencion.ELECTRICA, texto: dto.electrica?.trim() },
-      { area: AreaIntervencion.PINTADO, texto: dto.pintado?.trim() },
-      { area: AreaIntervencion.MANTENIMIENTO_GENERAL, texto: dto.mantenimiento?.trim() },
+    const areas: {
+      area: AreaIntervencion;
+      texto?: string;
+      responsableId?: string;
+    }[] = [
+      { area: AreaIntervencion.MECANICA, texto: dto.mecanica?.trim(), responsableId: dto.mecanicaResponsableId },
+      { area: AreaIntervencion.ELECTRICA, texto: dto.electrica?.trim(), responsableId: dto.electricaResponsableId },
+      { area: AreaIntervencion.PINTADO, texto: dto.pintado?.trim(), responsableId: dto.pintadoResponsableId },
+      {
+        area: AreaIntervencion.MANTENIMIENTO_GENERAL,
+        texto: dto.mantenimiento?.trim(),
+        responsableId: dto.mantenimientoResponsableId,
+      },
     ];
 
-    for (const a of areas) {
-      if (!a.texto) continue;
+    const conTexto = areas.filter((a) => a.texto);
+    if (conTexto.some((a) => !a.responsableId)) {
+      throw new BadRequestException('Cada área con observación debe tener un responsable asignado');
+    }
+
+    const skipMantenimiento = dto.requiereMantenimiento === false;
+
+    for (const a of conTexto) {
+      const emp = await this.prisma.empleado.findUnique({ where: { id: a.responsableId! } });
+      if (!emp?.activo) throw new BadRequestException('Empleado responsable no válido');
+
       await this.prisma.intervencion.create({
         data: {
           maquinaId: id,
           tipo: TipoIntervencion.DIAGNOSTICO_INICIAL,
           area: a.area,
-          descripcion: a.texto,
-          responsableId: dto.responsableId,
-          responsableNombre: dto.responsable,
+          descripcion: a.texto!,
+          responsableId: a.responsableId,
+          responsableNombre: `${emp.nombre} ${emp.apellido}`,
+          fechaAsignacion: new Date(),
+          estadoIntervencion: EstadoIntervencion.ASIGNADO,
           registradoPorId: user.id,
         },
       });
+
+      if (!skipMantenimiento) {
+        await this.prisma.intervencion.create({
+          data: {
+            maquinaId: id,
+            tipo: TipoIntervencion.TRABAJO_REALIZADO,
+            area: a.area,
+            descripcion: `Mantenimiento según diagnóstico (${a.area}): ${a.texto}`,
+            responsableId: a.responsableId,
+            fechaAsignacion: new Date(),
+            estadoIntervencion: EstadoIntervencion.ASIGNADO,
+            registradoPorId: user.id,
+          },
+        });
+      }
     }
 
-    const requiereMantenimiento =
-      dto.requiereMantenimiento ??
-      Boolean(dto.mecanica?.trim() || dto.electrica?.trim() || dto.pintado?.trim() || dto.mantenimiento?.trim());
+    const nuevoEstado = skipMantenimiento
+      ? EstadoMaquina.LISTA_PARA_VENTA
+      : conTexto.length > 0
+        ? EstadoMaquina.EN_MANTENIMIENTO
+        : EstadoMaquina.LISTA_PARA_VENTA;
 
-    const nuevoEstado = requiereMantenimiento
-      ? EstadoMaquina.EN_MANTENIMIENTO
-      : EstadoMaquina.LISTA_PARA_VENTA;
+    const motivo = skipMantenimiento
+      ? 'Diagnóstico preventivo — no requiere mantenimiento'
+      : conTexto.length > 0
+        ? 'Diagnóstico: requiere mantenimiento'
+        : 'Diagnóstico: lista para venta';
 
-    const updated = await this.changeEstado(
-      maquina,
-      nuevoEstado,
-      user.id,
-      requiereMantenimiento ? 'Diagnóstico: requiere mantenimiento' : 'Diagnóstico: lista para venta',
-    );
+    const updated = await this.changeEstado(maquina, nuevoEstado, user.id, motivo);
     return toMaquinaDto(updated);
   }
 

@@ -8,6 +8,7 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiFetch, imageUrl } from '@/lib/api';
 import { ESTADO_COLORS, ESTADO_LABELS } from '@/lib/labels';
+import { maquinaSubtitulo, maquinaTitulo } from '@/lib/maquina-display';
 
 type ViewMode = 'grid' | 'list';
 
@@ -33,6 +34,8 @@ export default function MaquinasList() {
       (m) =>
         m.nombre.toLowerCase().includes(q) ||
         m.tipo.toLowerCase().includes(q) ||
+        m.marca.toLowerCase().includes(q) ||
+        m.modelo.toLowerCase().includes(q) ||
         m.proveedor?.nombre.toLowerCase().includes(q) ||
         ESTADO_LABELS[m.estado].toLowerCase().includes(q),
     );
@@ -113,14 +116,16 @@ export default function MaquinasList() {
                     </div>
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold">{m.nombre}</h3>
+                        <div>
+                          <h3 className="font-semibold">{maquinaTitulo(m)}</h3>
+                          <p className="text-sm text-[#6c757d] mt-0.5">{maquinaSubtitulo(m)}</p>
+                        </div>
                         <span
                           className={`shrink-0 text-xs text-white px-2 py-1 rounded-full ${ESTADO_COLORS[m.estado]}`}
                         >
                           {ESTADO_LABELS[m.estado]}
                         </span>
                       </div>
-                      <p className="text-sm text-[#6c757d] mt-1">{m.tipo}</p>
                       <p className="text-xs text-[#6c757d] mt-2">{m.proveedor?.nombre ?? '—'}</p>
                     </div>
                   </Link>
@@ -133,8 +138,8 @@ export default function MaquinasList() {
                 <thead className="bg-gray-50 border-b text-left">
                   <tr>
                     <th className="p-3 w-16" />
-                    <th className="p-3">Nombre</th>
-                    <th className="p-3">Tipo</th>
+                    <th className="p-3">Máquina</th>
+                    <th className="p-3">Modelo</th>
                     <th className="p-3">Proveedor</th>
                     <th className="p-3">Estado</th>
                     <th className="p-3">Precio USD</th>
@@ -159,10 +164,10 @@ export default function MaquinasList() {
                         </td>
                         <td className="p-3">
                           <Link href={`/maquinas/${m.id}`} className="font-medium hover:text-[#f5c842]">
-                            {m.nombre}
+                            {maquinaTitulo(m)}
                           </Link>
                         </td>
-                        <td className="p-3 text-[#6c757d]">{m.tipo}</td>
+                        <td className="p-3 text-[#6c757d]">{maquinaSubtitulo(m)}</td>
                         <td className="p-3 text-[#6c757d]">{m.proveedor?.nombre ?? '—'}</td>
                         <td className="p-3">
                           <span

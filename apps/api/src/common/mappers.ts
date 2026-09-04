@@ -8,6 +8,7 @@ export function decimalToString(value: Decimal | null | undefined): string | nul
 export function toUsuarioDto(user: {
   id: string;
   nombre: string;
+  username?: string;
   email: string;
   rol: string;
   activo: boolean;
@@ -17,6 +18,7 @@ export function toUsuarioDto(user: {
   return {
     id: user.id,
     nombre: user.nombre,
+    username: user.username ?? user.email.split('@')[0],
     email: user.email,
     rol: user.rol,
     activo: user.activo,
@@ -31,10 +33,12 @@ export function toEmpleadoDto(emp: {
   apellido: string;
   telefono: string | null;
   email: string;
+  carnet?: string | null;
   especialidad: string;
   activo: boolean;
   createdAt: Date;
   updatedAt: Date;
+  usuario?: { id: string; username?: string } | null;
 }) {
   return {
     id: emp.id,
@@ -43,6 +47,8 @@ export function toEmpleadoDto(emp: {
     nombreCompleto: `${emp.nombre} ${emp.apellido}`,
     telefono: emp.telefono,
     email: emp.email,
+    carnet: emp.carnet ?? null,
+    username: emp.usuario?.username ?? null,
     especialidad: emp.especialidad,
     activo: emp.activo,
     createdAt: emp.createdAt.toISOString(),
@@ -50,7 +56,8 @@ export function toEmpleadoDto(emp: {
   };
 }
 
-export function toIntervencionDto(i: {
+export function toIntervencionDto(
+  i: {
   id: string;
   maquinaId: string;
   tipo: string;
@@ -82,13 +89,17 @@ export function toIntervencionDto(i: {
     id: string;
     nombre: string;
     tipo: string;
+    marca?: string;
+    modelo?: string;
     estado: string;
     proveedor?: { nombre: string };
   };
-  registradoPor: { id: string; nombre: string; email: string; rol: string; activo: boolean; createdAt: Date };
-  aprobadoPor?: { id: string; nombre: string; email: string; rol: string; activo: boolean; createdAt: Date } | null;
+  registradoPor: { id: string; nombre: string; username?: string; email: string; rol: string; activo: boolean; createdAt: Date };
+  aprobadoPor?: { id: string; nombre: string; username?: string; email: string; rol: string; activo: boolean; createdAt: Date } | null;
   finalizadoPor?: { id: string; nombre: string; apellido: string } | null;
-}) {
+},
+  options?: { employeeView?: boolean },
+) {
   return {
     id: i.id,
     maquinaId: i.maquinaId,
@@ -97,6 +108,8 @@ export function toIntervencionDto(i: {
           id: i.maquina.id,
           nombre: i.maquina.nombre,
           tipo: i.maquina.tipo,
+          marca: i.maquina.marca,
+          modelo: i.maquina.modelo,
           estado: i.maquina.estado,
           proveedor: i.maquina.proveedor?.nombre,
         }
@@ -158,10 +171,14 @@ export function toHistorialEstadoDto(h: {
   };
 }
 
-export function toMaquinaDto(maquina: {
+export function toMaquinaDto(
+  maquina: {
   id: string;
   nombre: string;
   tipo: string;
+  marca: string;
+  modelo: string;
+  anio: number | null;
   proveedorId: string;
   estado: string;
   descripcionLlegada: string | null;
@@ -180,7 +197,7 @@ export function toMaquinaDto(maquina: {
   createdAt: Date;
   updatedAt: Date;
   proveedor?: { id: string; nombre: string; createdAt: Date };
-  creadoPor?: { id: string; nombre: string; email: string; rol: string; activo: boolean; createdAt: Date };
+  creadoPor?: { id: string; nombre: string; username?: string; email: string; rol: string; activo: boolean; createdAt: Date };
   empleadoDiag?: { id: string; nombre: string; apellido: string; especialidad: string } | null;
   imagenes?: Array<{
     id: string;
@@ -229,13 +246,18 @@ export function toMaquinaDto(maquina: {
     anterior: string | null;
     motivo: string | null;
     createdAt: Date;
-    creadoPor: { id: string; nombre: string; email: string; rol: string; activo: boolean; createdAt: Date };
+    creadoPor: { id: string; nombre: string; username?: string; email: string; rol: string; activo: boolean; createdAt: Date };
   }>;
-}) {
+},
+  options?: { employeeView?: boolean },
+) {
   return {
     id: maquina.id,
     nombre: maquina.nombre,
     tipo: maquina.tipo,
+    marca: maquina.marca,
+    modelo: maquina.modelo,
+    anio: maquina.anio,
     proveedorId: maquina.proveedorId,
     proveedor: maquina.proveedor
       ? {
@@ -274,8 +296,10 @@ export function toMaquinaDto(maquina: {
       thumbnailUrl: img.thumbnailUrl,
       createdAt: img.createdAt.toISOString(),
     })),
-    intervenciones: maquina.intervenciones?.map((i) => toIntervencionDto(i)),
-    historialEstados: maquina.historialEstados?.map((h) => toHistorialEstadoDto(h)),
+    intervenciones: maquina.intervenciones?.map((i) => toIntervencionDto(i, options)),
+    historialEstados: options?.employeeView
+      ? undefined
+      : maquina.historialEstados?.map((h) => toHistorialEstadoDto(h)),
     createdAt: maquina.createdAt.toISOString(),
     updatedAt: maquina.updatedAt.toISOString(),
   };

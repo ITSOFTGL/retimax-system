@@ -20,6 +20,7 @@ import { PhotoGallery } from '@/components/PhotoGallery';
 import { ImagePicker } from '@/components/ImagePicker';
 import { apiFetch } from '@/lib/api';
 import { formatDateTime } from '@/lib/dates';
+import { maquinaSubtitulo, maquinaTitulo } from '@/lib/maquina-display';
 import {
   AREA_LABELS,
   ESTADO_COLORS,
@@ -57,6 +58,9 @@ export default function MaquinaDetailPage() {
 
   const [editNombre, setEditNombre] = useState('');
   const [editTipo, setEditTipo] = useState('');
+  const [editMarca, setEditMarca] = useState('');
+  const [editModelo, setEditModelo] = useState('');
+  const [editAnio, setEditAnio] = useState('');
   const [editProveedorId, setEditProveedorId] = useState('');
   const [editDescripcion, setEditDescripcion] = useState('');
 
@@ -64,13 +68,16 @@ export default function MaquinaDetailPage() {
   const [fechaLlegadaEst, setFechaLlegadaEst] = useState('');
   const [fechaRecibida, setFechaRecibida] = useState('');
   const [recepcionDesc, setRecepcionDesc] = useState('');
-  const [empleadoDiagnosticoId, setEmpleadoDiagnosticoId] = useState('');
   const [fotosLlegada, setFotosLlegada] = useState<File[]>([]);
 
   const [diagMecanica, setDiagMecanica] = useState('');
   const [diagElectrica, setDiagElectrica] = useState('');
   const [diagPintado, setDiagPintado] = useState('');
   const [diagMantenimiento, setDiagMantenimiento] = useState('');
+  const [diagMecanicaResp, setDiagMecanicaResp] = useState('');
+  const [diagElectricaResp, setDiagElectricaResp] = useState('');
+  const [diagPintadoResp, setDiagPintadoResp] = useState('');
+  const [diagMantenimientoResp, setDiagMantenimientoResp] = useState('');
   const [requiereMantenimiento, setRequiereMantenimiento] = useState(true);
 
   const [precioCompraUsd, setPrecioCompraUsd] = useState('');
@@ -83,10 +90,12 @@ export default function MaquinaDetailPage() {
   function syncForm(data: MaquinaDto) {
     setEditNombre(data.nombre);
     setEditTipo(data.tipo);
+    setEditMarca(data.marca);
+    setEditModelo(data.modelo);
+    setEditAnio(data.anio != null ? String(data.anio) : '');
     setEditProveedorId(data.proveedorId);
     setEditDescripcion(data.descripcionAcordada ?? data.descripcionLlegada ?? '');
     setRecepcionDesc(data.descripcionLlegada ?? '');
-    setEmpleadoDiagnosticoId(data.empleadoDiagnosticoId ?? '');
     setFechaDespacho(data.fechaDespacho?.slice(0, 10) ?? '');
     setFechaLlegadaEst(data.fechaLlegadaEstimada?.slice(0, 10) ?? '');
     setFechaRecibida(
@@ -202,7 +211,6 @@ export default function MaquinaDetailPage() {
     try {
       const form = new FormData();
       form.append('descripcionLlegada', recepcionDesc);
-      form.append('empleadoDiagnosticoId', empleadoDiagnosticoId);
       if (fechaRecibida) form.append('fechaLlegadaReal', fechaRecibida);
       fotosLlegada.forEach((f) => form.append('files', f));
       await apiFetch(`/maquinas/${params.id}/recepcion`, { method: 'POST', body: form });
@@ -221,15 +229,31 @@ export default function MaquinaDetailPage() {
     setActionLoading(true);
     setError('');
     try {
+      const areas = [
+        { text: diagMecanica, resp: diagMecanicaResp, key: 'mecanica' as const },
+        { text: diagElectrica, resp: diagElectricaResp, key: 'electrica' as const },
+        { text: diagPintado, resp: diagPintadoResp, key: 'pintado' as const },
+        { text: diagMantenimiento, resp: diagMantenimientoResp, key: 'mantenimiento' as const },
+      ];
+      for (const a of areas) {
+        if (a.text.trim() && !a.resp) {
+          setError('Cada área con observación debe tener un responsable asignado');
+          setActionLoading(false);
+          return;
+        }
+      }
+
       await apiFetch(`/maquinas/${params.id}/diagnostico/completar`, {
         method: 'POST',
         body: JSON.stringify({
-          responsableId:
-            (maquina?.empleadoDiagnosticoId ?? empleadoDiagnosticoId) || undefined,
-          mecanica: diagMecanica || undefined,
-          electrica: diagElectrica || undefined,
-          pintado: diagPintado || undefined,
-          mantenimiento: diagMantenimiento || undefined,
+          mecanica: diagMecanica.trim() || undefined,
+          mecanicaResponsableId: diagMecanica.trim() ? diagMecanicaResp : undefined,
+          electrica: diagElectrica.trim() || undefined,
+          electricaResponsableId: diagElectrica.trim() ? diagElectricaResp : undefined,
+          pintado: diagPintado.trim() || undefined,
+          pintadoResponsableId: diagPintado.trim() ? diagPintadoResp : undefined,
+          mantenimiento: diagMantenimiento.trim() || undefined,
+          mantenimientoResponsableId: diagMantenimiento.trim() ? diagMantenimientoResp : undefined,
           requiereMantenimiento,
         }),
       });
@@ -311,6 +335,9 @@ export default function MaquinaDetailPage() {
         body: JSON.stringify({
           nombre: editNombre,
           tipo: editTipo,
+          marca: editMarca,
+          modelo: editModelo,
+          anio: editAnio ? Number(editAnio) : undefined,
           proveedorId: editProveedorId,
           descripcionLlegada: editDescripcion,
         }),
@@ -358,12 +385,12 @@ export default function MaquinaDetailPage() {
             </p>
           )}
 
-          {/* CUADRO 1 — Datos principales + fotos + despacho (Italia) */}
+          {/* CUADRO 1 — Datos principales + fotos + despacho */}
           <div className="rounded-xl bg-white border p-6 space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-bold">{maquina.nombre}</h2>
-                <p className="text-[#6c757d]">{maquina.tipo}</p>
+                <h2 className="text-2xl font-bold">{maquinaTitulo(maquina)}</h2>
+                <p className="text-xl text-[#6c757d]">{maquinaSubtitulo(maquina)}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span
@@ -388,14 +415,38 @@ export default function MaquinaDetailPage() {
                 <input
                   value={editNombre}
                   onChange={(e) => setEditNombre(e.target.value)}
-                  placeholder="Nombre"
+                  placeholder="Nombre interno"
                   className="rounded-lg border px-3 py-2"
                   required
                 />
                 <input
                   value={editTipo}
                   onChange={(e) => setEditTipo(e.target.value)}
-                  placeholder="Tipo"
+                  placeholder="Tipo (ej. Fresadora)"
+                  className="rounded-lg border px-3 py-2"
+                  required
+                />
+                <input
+                  value={editMarca}
+                  onChange={(e) => setEditMarca(e.target.value)}
+                  placeholder="Marca *"
+                  className="rounded-lg border px-3 py-2"
+                  required
+                />
+                <input
+                  value={editModelo}
+                  onChange={(e) => setEditModelo(e.target.value)}
+                  placeholder="Modelo *"
+                  className="rounded-lg border px-3 py-2"
+                  required
+                />
+                <input
+                  type="number"
+                  min={1950}
+                  max={2100}
+                  value={editAnio}
+                  onChange={(e) => setEditAnio(e.target.value)}
+                  placeholder="Año *"
                   className="rounded-lg border px-3 py-2"
                   required
                 />
@@ -448,11 +499,6 @@ export default function MaquinaDetailPage() {
                   <p>
                     <span className="text-[#6c757d]">Llegada:</span>{' '}
                     {new Date(maquina.fechaLlegadaReal).toLocaleDateString('es-BO')}
-                  </p>
-                )}
-                {maquina.empleadoDiagnostico && (
-                  <p>
-                    <span className="text-[#6c757d]">Diagnóstico:</span> {maquina.empleadoDiagnostico}
                   </p>
                 )}
               </div>
@@ -572,7 +618,7 @@ export default function MaquinaDetailPage() {
 
             {estado === EstadoMaquina.RECIBIDA && (
               <form onSubmit={handleRecepcion} className="space-y-4 border-t pt-4">
-                <p className="text-sm font-medium">Cesia verifica cómo llegó la máquina</p>
+                <p className="text-sm font-medium">Verificar cómo llegó la máquina (descargo del contenedor)</p>
                 <textarea
                   value={recepcionDesc}
                   onChange={(e) => setRecepcionDesc(e.target.value)}
@@ -581,28 +627,6 @@ export default function MaquinaDetailPage() {
                   className="w-full rounded-lg border px-3 py-2"
                   required
                 />
-                <div>
-                  <label className="block text-sm font-medium mb-1">Asignar diagnóstico a *</label>
-                  {empleados.length === 0 ? (
-                    <p className="text-amber-700 text-sm">
-                      No hay empleados registrados. Créalos en el módulo Empleados.
-                    </p>
-                  ) : (
-                    <select
-                      value={empleadoDiagnosticoId}
-                      onChange={(e) => setEmpleadoDiagnosticoId(e.target.value)}
-                      className="w-full rounded-lg border px-3 py-2"
-                      required
-                    >
-                      <option value="">Seleccionar empleado</option>
-                      {empleados.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.nombreCompleto} — {e.especialidad.replace(/_/g, ' ')}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
                 <ImagePicker
                   label="Fotos de llegada (máx. 10)"
                   files={fotosLlegada}
@@ -611,7 +635,7 @@ export default function MaquinaDetailPage() {
                 />
                 <button
                   type="submit"
-                  disabled={actionLoading || empleados.length === 0}
+                  disabled={actionLoading}
                   className="rounded-lg bg-[#1a1a1a] text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
                 >
                   {actionLoading ? 'Guardando...' : 'Confirmar recepción → Diagnóstico'}
@@ -622,26 +646,47 @@ export default function MaquinaDetailPage() {
             {estado === EstadoMaquina.EN_DIAGNOSTICO && (
               <form onSubmit={handleCompletarDiagnostico} className="space-y-4 border-t pt-4">
                 <p className="text-sm text-[#6c757d]">
-                  Diagnóstico por área — asignado a{' '}
-                  <strong>{maquina.empleadoDiagnostico ?? 'sin asignar'}</strong>
+                  Diagnóstico por área — asigna un responsable por cada observación registrada.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {(
                     [
-                      ['Mecánica', diagMecanica, setDiagMecanica],
-                      ['Eléctrica', diagElectrica, setDiagElectrica],
-                      ['Pintado', diagPintado, setDiagPintado],
-                      ['Mantenimiento', diagMantenimiento, setDiagMantenimiento],
+                      ['Mecánica', diagMecanica, setDiagMecanica, diagMecanicaResp, setDiagMecanicaResp],
+                      ['Eléctrica', diagElectrica, setDiagElectrica, diagElectricaResp, setDiagElectricaResp],
+                      ['Pintado', diagPintado, setDiagPintado, diagPintadoResp, setDiagPintadoResp],
+                      [
+                        'Mantenimiento general',
+                        diagMantenimiento,
+                        setDiagMantenimiento,
+                        diagMantenimientoResp,
+                        setDiagMantenimientoResp,
+                      ],
                     ] as const
-                  ).map(([label, val, setVal]) => (
-                    <div key={label}>
-                      <label className="block text-sm font-medium mb-1">{label}</label>
+                  ).map(([label, val, setVal, resp, setResp]) => (
+                    <div key={label} className="space-y-2">
+                      <label className="block text-sm font-medium">{label}</label>
                       <textarea
                         value={val}
                         onChange={(e) => setVal(e.target.value)}
                         rows={2}
+                        placeholder="Observaciones (opcional)"
                         className="w-full rounded-lg border px-3 py-2 text-sm"
                       />
+                      {val.trim() && (
+                        <select
+                          value={resp}
+                          onChange={(e) => setResp(e.target.value)}
+                          className="w-full rounded-lg border px-3 py-2 text-sm"
+                          required
+                        >
+                          <option value="">Responsable de esta observación *</option>
+                          {empleados.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.nombreCompleto} — {e.especialidad.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -653,9 +698,14 @@ export default function MaquinaDetailPage() {
                   />
                   Requiere mantenimiento antes de vender
                 </label>
+                {!requiereMantenimiento && (
+                  <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+                    Diagnóstico preventivo: la máquina pasará directo a lista para venta sin mantenimiento.
+                  </p>
+                )}
                 <button
                   type="submit"
-                  disabled={actionLoading}
+                  disabled={actionLoading || empleados.length === 0}
                   className="rounded-lg bg-[#f5c842] px-4 py-2 font-semibold text-sm disabled:opacity-50"
                 >
                   {actionLoading

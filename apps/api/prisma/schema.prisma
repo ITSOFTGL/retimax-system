@@ -75,6 +75,7 @@ enum EstadoAprobacion {
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
+  username     String   @unique
   email        String   @unique
   passwordHash String
   rol          Rol      @default(ADMIN)
@@ -99,6 +100,7 @@ model Empleado {
   apellido     String
   telefono     String?
   email        String       @unique
+  carnet       String?      @unique
   especialidad Especialidad
   activo       Boolean      @default(true)
   createdAt    DateTime     @default(now())
@@ -151,6 +153,9 @@ model Maquina {
   id                   String        @id @default(uuid())
   nombre               String
   tipo                 String
+  marca                String
+  modelo               String
+  anio                 Int?
   proveedorId          String
   proveedor            Proveedor     @relation(fields: [proveedorId], references: [id])
   estado               EstadoMaquina @default(COMPRADA_ITALIA)

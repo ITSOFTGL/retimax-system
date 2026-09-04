@@ -1,12 +1,15 @@
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
+  Min,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 import { AreaIntervencion, EstadoMaquina, EtapaImagen, TipoIntervencion } from '@prisma/client';
 
@@ -18,6 +21,19 @@ export class CreateMaquinaDto {
   @IsString()
   @MinLength(1)
   tipo!: string;
+
+  @IsString()
+  @MinLength(1)
+  marca!: string;
+
+  @IsString()
+  @MinLength(1)
+  modelo!: string;
+
+  @IsInt()
+  @Min(1950)
+  @Max(2100)
+  anio!: number;
 
   @IsUUID()
   proveedorId!: string;
@@ -49,6 +65,22 @@ export class UpdateMaquinaDto {
   @IsString()
   @MinLength(1)
   tipo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  marca?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  modelo?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1950)
+  @Max(2100)
+  anio?: number;
 
   @IsOptional()
   @IsUUID()
@@ -111,15 +143,6 @@ export class RegistrarRecepcionDto {
   @MinLength(1)
   descripcionLlegada!: string;
 
-  @ValidateIf((o) => !o.empleadoDiagnostico)
-  @IsUUID()
-  empleadoDiagnosticoId?: string;
-
-  @ValidateIf((o) => !o.empleadoDiagnosticoId)
-  @IsString()
-  @MinLength(1)
-  empleadoDiagnostico?: string;
-
   @IsOptional()
   @IsDateString()
   fechaLlegadaReal?: string;
@@ -127,30 +150,39 @@ export class RegistrarRecepcionDto {
 
 export class CompletarDiagnosticoDto {
   @IsOptional()
-  @IsUUID()
-  responsableId?: string;
-
-  @IsOptional()
-  @IsString()
-  responsable?: string;
-
-  @IsOptional()
   @IsString()
   mecanica?: string;
+
+  @IsOptional()
+  @IsUUID()
+  mecanicaResponsableId?: string;
 
   @IsOptional()
   @IsString()
   electrica?: string;
 
   @IsOptional()
+  @IsUUID()
+  electricaResponsableId?: string;
+
+  @IsOptional()
   @IsString()
   pintado?: string;
+
+  @IsOptional()
+  @IsUUID()
+  pintadoResponsableId?: string;
 
   @IsOptional()
   @IsString()
   mantenimiento?: string;
 
   @IsOptional()
+  @IsUUID()
+  mantenimientoResponsableId?: string;
+
+  @IsOptional()
+  @IsBoolean()
   requiereMantenimiento?: boolean;
 }
 

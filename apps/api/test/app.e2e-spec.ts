@@ -40,6 +40,7 @@ describe('RETIMAX E2E', () => {
       data: {
         nombre: 'Test Admin',
         email: 'test@retimax.local',
+        username: 'testadmin',
         passwordHash,
         rol: 'ADMIN',
       },
@@ -58,7 +59,7 @@ describe('RETIMAX E2E', () => {
   it('login and obtain tokens', async () => {
     const res = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email: 'test@retimax.local', password: 'Test1234!' })
+      .send({ username: 'testadmin', password: 'Test1234!' })
       .expect(201);
 
     expect(res.body.accessToken).toBeDefined();
@@ -73,8 +74,11 @@ describe('RETIMAX E2E', () => {
       .send({
         nombre: 'Torno CNC E2E',
         tipo: 'Torno',
+        marca: 'Mazak',
+        modelo: 'QT200',
+        anio: 2018,
         proveedorId,
-        descripcionLlegada: 'Comprado en Italia con accesorios',
+        descripcionLlegada: 'Comprado con accesorios',
       })
       .expect(201);
 

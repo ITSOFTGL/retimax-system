@@ -336,6 +336,9 @@ export class ComercialService {
       id: string;
       nombre: string;
       tipo: string;
+      marca: string;
+      modelo: string;
+      anio: number | null;
       proveedorId: string;
       estado: string;
       descripcionLlegada: string | null;
@@ -397,6 +400,9 @@ export class ComercialService {
       id: string;
       nombre: string;
       tipo: string;
+      marca: string;
+      modelo: string;
+      anio: number | null;
       proveedorId: string;
       estado: string;
       descripcionLlegada: string | null;

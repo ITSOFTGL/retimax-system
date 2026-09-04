@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { Rol } from '@prisma/client';
+import { normalizeUsername, suggestUsernameFromEmpleado } from '../common/empleado-utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmpleadoDto, UpdateEmpleadoDto } from './dto/empleado.dto';
 
@@ -19,11 +20,12 @@ export class EmpleadosService {
     apellido: string;
     telefono: string | null;
     email: string;
+    carnet: string | null;
     especialidad: string;
     activo: boolean;
     createdAt: Date;
     updatedAt: Date;
-    usuario?: { id: string; activo: boolean } | null;
+    usuario?: { id: string; username: string; activo: boolean } | null;
   }) {
     return {
       id: emp.id,
@@ -32,6 +34,8 @@ export class EmpleadosService {
       nombreCompleto: `${emp.nombre} ${emp.apellido}`,
       telefono: emp.telefono,
       email: emp.email,
+      carnet: emp.carnet,
+      username: emp.usuario?.username ?? null,
       especialidad: emp.especialidad,
       activo: emp.activo,
       usuarioId: emp.usuario?.id ?? null,
@@ -40,10 +44,17 @@ export class EmpleadosService {
     };
   }
 
+  private async ensureUniqueUsername(username: string, excludeUserId?: string) {
+    const existing = await this.prisma.usuario.findUnique({ where: { username } });
+    if (existing && existing.id !== excludeUserId) {
+      throw new ConflictException('El nombre de usuario ya está en uso');
+    }
+  }
+
   async findAll(includeInactive = false) {
     const rows = await this.prisma.empleado.findMany({
       where: includeInactive ? undefined : { activo: true },
-      include: { usuario: { select: { id: true, activo: true } } },
+      include: { usuario: { select: { id: true, username: true, activo: true } } },
       orderBy: [{ apellido: 'asc' }, { nombre: 'asc' }],
     });
     return rows.map((e) => this.toDto(e));
@@ -52,7 +63,7 @@ export class EmpleadosService {
   async findOne(id: string) {
     const emp = await this.prisma.empleado.findUnique({
       where: { id },
-      include: { usuario: { select: { id: true, activo: true } } },
+      include: { usuario: { select: { id: true, username: true, activo: true } } },
     });
     if (!emp) throw new NotFoundException('Empleado no encontrado');
     return this.toDto(emp);
@@ -61,6 +72,16 @@ export class EmpleadosService {
   async create(dto: CreateEmpleadoDto) {
     const exists = await this.prisma.empleado.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Ya existe un empleado con ese email');
+
+    if (dto.carnet) {
+      const carnetDup = await this.prisma.empleado.findUnique({ where: { carnet: dto.carnet.trim() } });
+      if (carnetDup) throw new ConflictException('Ya existe un empleado con ese carnet');
+    }
+
+    const username = normalizeUsername(
+      dto.username ?? suggestUsernameFromEmpleado(dto.carnet, dto.nombre, dto.apellido),
+    );
+    await this.ensureUniqueUsername(username);
 
     const userExists = await this.prisma.usuario.findUnique({ where: { email: dto.email } });
     if (userExists) throw new ConflictException('Ya existe un usuario con ese email');
@@ -74,6 +95,7 @@ export class EmpleadosService {
           apellido: dto.apellido,
           email: dto.email,
           telefono: dto.telefono,
+          carnet: dto.carnet?.trim() || null,
           especialidad: dto.especialidad,
         },
       });
@@ -81,6 +103,7 @@ export class EmpleadosService {
       await tx.usuario.create({
         data: {
           nombre: `${dto.nombre} ${dto.apellido}`,
+          username,
           email: dto.email,
           passwordHash,
           rol: Rol.EMPLEADO,
@@ -90,7 +113,7 @@ export class EmpleadosService {
 
       return tx.empleado.findUniqueOrThrow({
         where: { id: created.id },
-        include: { usuario: { select: { id: true, activo: true } } },
+        include: { usuario: { select: { id: true, username: true, activo: true } } },
       });
     });
 
@@ -111,6 +134,13 @@ export class EmpleadosService {
       if (dup) throw new ConflictException('Email ya en uso');
     }
 
+    if (dto.carnet && dto.carnet !== emp.carnet) {
+      const carnetDup = await this.prisma.empleado.findFirst({
+        where: { carnet: dto.carnet.trim(), id: { not: id } },
+      });
+      if (carnetDup) throw new ConflictException('Carnet ya en uso');
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const e = await tx.empleado.update({
         where: { id },
@@ -119,10 +149,11 @@ export class EmpleadosService {
           apellido: dto.apellido,
           email: dto.email,
           telefono: dto.telefono,
+          carnet: dto.carnet !== undefined ? dto.carnet?.trim() || null : undefined,
           especialidad: dto.especialidad,
           activo: dto.activo,
         },
-        include: { usuario: { select: { id: true, activo: true } } },
+        include: { usuario: { select: { id: true, username: true, activo: true } } },
       });
 
       if (emp.usuario) {

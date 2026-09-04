@@ -7,12 +7,16 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { ImagePicker } from '@/components/ImagePicker';
 import { apiFetch } from '@/lib/api';
+import { maquinaTitulo } from '@/lib/maquina-display';
 
 export default function NuevaMaquinaPage() {
   const router = useRouter();
   const [proveedores, setProveedores] = useState<ProveedorDto[]>([]);
   const [nombre, setNombre] = useState('');
   const [tipo, setTipo] = useState('');
+  const [marca, setMarca] = useState('');
+  const [modelo, setModelo] = useState('');
+  const [anio, setAnio] = useState(String(new Date().getFullYear()));
   const [proveedorId, setProveedorId] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [nuevoProveedor, setNuevoProveedor] = useState('');
@@ -43,8 +47,11 @@ export default function NuevaMaquinaPage() {
       const maquina = await apiFetch<{ id: string }>('/maquinas', {
         method: 'POST',
         body: JSON.stringify({
-          nombre,
-          tipo,
+          nombre: nombre.trim() || maquinaTitulo({ tipo, marca }),
+          tipo: tipo.trim(),
+          marca: marca.trim(),
+          modelo: modelo.trim(),
+          anio: Number(anio),
           proveedorId,
           descripcionAcordada: descripcion || undefined,
         }),
@@ -69,33 +76,67 @@ export default function NuevaMaquinaPage() {
     <AuthGuard adminOnly>
       <AppShell>
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl font-bold mb-2">Registrar máquina (compra Italia)</h2>
+          <h2 className="text-2xl font-bold mb-2">Compra de máquina</h2>
           <p className="text-[#6c757d] text-sm mb-6">
-            Álvaro registra aquí la compra: proveedor, qué debería traer la máquina y fotos de
-            embarque como respaldo ante el proveedor.
+            Registra la compra: datos de la máquina, proveedor, descripción acordada y fotos de
+            embarque.
           </p>
           <form onSubmit={handleSubmit} className="rounded-xl bg-white border p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Nombre</label>
+              <label className="block text-sm font-medium mb-1">Nombre *</label>
               <input
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
+                placeholder="Opcional — se genera de tipo + marca + modelo"
                 className="w-full rounded-lg border px-4 py-2"
-                required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Tipo</label>
-              <input
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
-                placeholder="Torno, fresadora..."
-                className="w-full rounded-lg border px-4 py-2"
-                required
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Tipo *</label>
+                <input
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value)}
+                  placeholder="Fresadora, Torno..."
+                  className="w-full rounded-lg border px-4 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Marca *</label>
+                <input
+                  value={marca}
+                  onChange={(e) => setMarca(e.target.value)}
+                  placeholder="Arno, Mazak..."
+                  className="w-full rounded-lg border px-4 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Modelo *</label>
+                <input
+                  value={modelo}
+                  onChange={(e) => setModelo(e.target.value)}
+                  placeholder="K32, SL-10..."
+                  className="w-full rounded-lg border px-4 py-2"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Año *</label>
+                <input
+                  type="number"
+                  min={1950}
+                  max={2100}
+                  value={anio}
+                  onChange={(e) => setAnio(e.target.value)}
+                  className="w-full rounded-lg border px-4 py-2"
+                  required
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Proveedor</label>
+              <label className="block text-sm font-medium mb-1">Proveedor *</label>
               <select
                 value={proveedorId}
                 onChange={(e) => setProveedorId(e.target.value)}
@@ -116,19 +157,13 @@ export default function NuevaMaquinaPage() {
                   placeholder="Agregar proveedor rápido"
                   className="flex-1 rounded-lg border px-3 py-2 text-sm"
                 />
-                <button
-                  type="button"
-                  onClick={addProveedor}
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
+                <button type="button" onClick={addProveedor} className="rounded-lg border px-3 py-2 text-sm">
                   Agregar
                 </button>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Qué debería traer (descripción acordada)
-              </label>
+              <label className="block text-sm font-medium mb-1">Qué debería traer (descripción acordada)</label>
               <textarea
                 value={descripcion}
                 onChange={(e) => setDescripcion(e.target.value)}
@@ -151,7 +186,7 @@ export default function NuevaMaquinaPage() {
               disabled={loading}
               className="rounded-lg bg-[#f5c842] px-6 py-2.5 font-semibold text-[#1a1a1a] disabled:opacity-60"
             >
-              {loading ? 'Guardando...' : 'Registrar máquina'}
+              {loading ? 'Guardando...' : 'Registrar compra'}
             </button>
           </form>
         </div>

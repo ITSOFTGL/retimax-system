@@ -7,7 +7,7 @@ import { Rol } from '@retimax/shared-types';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('admin@retimax.local');
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('Admin123!');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,7 +17,7 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      await login(email, password);
+      await login(username, password);
       const user = getUser<{ rol: Rol }>();
       router.push(user?.rol === Rol.EMPLEADO ? '/mis-trabajos' : '/dashboard');
     } catch (err) {
@@ -38,11 +38,13 @@ export default function LoginPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1">Usuario</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Ej. número de carnet o usuario"
+              autoComplete="username"
               className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#f5c842]"
               required
             />

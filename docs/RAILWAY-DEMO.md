@@ -68,9 +68,12 @@ PORT=4000
 
 ## Login demo
 
-| Email | Contraseña |
-|-------|------------|
-| `admin@retimax.local` | `Admin123!` |
+| Usuario | Contraseña |
+|---------|------------|
+| `admin` | `Admin123!` |
+| `alex` (empleado demo) | `Empleado123!` |
+
+Los empleados pueden usar su **número de carnet** como usuario si fue registrado al crearlos.
 
 ---
 

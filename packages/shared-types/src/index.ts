@@ -66,6 +66,7 @@ export enum EstadoPedido {
 export interface UsuarioDto {
   id: string;
   nombre: string;
+  username: string;
   email: string;
   rol: Rol;
   activo: boolean;
@@ -74,7 +75,7 @@ export interface UsuarioDto {
 }
 
 export interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -94,6 +95,8 @@ export interface EmpleadoDto {
   nombreCompleto: string;
   telefono?: string | null;
   email: string;
+  carnet?: string | null;
+  username?: string | null;
   especialidad: Especialidad;
   activo: boolean;
   usuarioId?: string | null;
@@ -132,6 +135,8 @@ export interface IntervencionDto {
     id: string;
     nombre: string;
     tipo: string;
+    marca?: string;
+    modelo?: string;
     estado: string;
     proveedor?: string;
   };
@@ -169,6 +174,9 @@ export interface MaquinaDto {
   id: string;
   nombre: string;
   tipo: string;
+  marca: string;
+  modelo: string;
+  anio?: number | null;
   proveedorId: string;
   proveedor?: ProveedorDto;
   estado: EstadoMaquina;
@@ -363,6 +371,9 @@ export interface ReporteTrabajoDto {
 export interface CreateMaquinaRequest {
   nombre: string;
   tipo: string;
+  marca: string;
+  modelo: string;
+  anio: number;
   proveedorId: string;
   descripcionLlegada?: string;
   descripcionAcordada?: string;
@@ -386,6 +397,8 @@ export interface CreateEmpleadoRequest {
   nombre: string;
   apellido: string;
   email: string;
+  carnet?: string;
+  username?: string;
   password: string;
   especialidad: Especialidad;
   telefono?: string;

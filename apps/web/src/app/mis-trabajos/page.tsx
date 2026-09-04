@@ -6,6 +6,7 @@ import { AppShell } from '@/components/AppShell';
 import { AuthGuard } from '@/components/AuthGuard';
 import { apiFetch } from '@/lib/api';
 import { formatDateTime } from '@/lib/dates';
+import { maquinaSubtitulo, maquinaTitulo } from '@/lib/maquina-display';
 import { AREA_LABELS, ESTADO_LABELS, TIPO_INTERVENCION_LABELS } from '@/lib/labels';
 
 const ESTADO_INTERVENCION_LABELS: Record<EstadoIntervencion, string> = {
@@ -98,9 +99,21 @@ export default function MisTrabajosPage() {
                 <div key={t.id} className="rounded-xl bg-white border p-6 space-y-3">
                   <div className="flex flex-wrap justify-between gap-2">
                     <div>
-                      <h3 className="font-semibold text-lg">{t.maquina?.nombre ?? 'Máquina'}</h3>
+                      <h3 className="font-semibold text-lg">
+                        {t.maquina?.tipo && t.maquina?.marca
+                          ? maquinaTitulo({
+                              tipo: t.maquina.tipo,
+                              marca: t.maquina.marca,
+                            })
+                          : (t.maquina?.nombre ?? 'Máquina')}
+                      </h3>
+                      {t.maquina?.modelo && (
+                        <p className="text-base font-medium text-[#1a1a1a]">
+                          {maquinaSubtitulo({ modelo: t.maquina.modelo })}
+                        </p>
+                      )}
                       <p className="text-sm text-[#6c757d]">
-                        {t.maquina?.tipo} — {TIPO_INTERVENCION_LABELS[t.tipo]} / {AREA_LABELS[t.area]}
+                        {TIPO_INTERVENCION_LABELS[t.tipo]} / {AREA_LABELS[t.area]}
                       </p>
                     </div>
                     <span className="text-xs bg-[#f5c842]/30 text-[#1a1a1a] px-2 py-1 rounded-full font-medium">
